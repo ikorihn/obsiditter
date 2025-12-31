@@ -1,41 +1,48 @@
 package com.ikorihn.obsiditter.data
 
 import android.content.Context
+import androidx.documentfile.provider.DocumentFile
 import com.ikorihn.obsiditter.model.Note
-import java.io.File
+import java.io.BufferedReader
+import java.io.FileNotFoundException
+import java.io.InputStreamReader
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
 class NoteRepository(private val context: Context) {
 
-    private fun getDirectory(): File {
-        // storage/emulated/0/Android/data/com.ikorihn.obsiditter/files/Journal
-        val dir = File(context.getExternalFilesDir(null), "Journal")
-        if (!dir.exists()) {
-            dir.mkdirs()
+    private val prefs = Prefs(context)
+
+    private fun getRootDirectory(): DocumentFile? {
+        val uri = prefs.storageUri ?: return null
+        return try {
+            DocumentFile.fromTreeUri(context, uri)
+        } catch (e: Exception) {
+            null
         }
-        return dir
     }
 
     fun getAllNotes(): List<Note> {
-        val dir = getDirectory()
-        val files = dir.listFiles { _, name -> name.matches(Regex("\\d{4}-\\d{2}-\\d{2}\\.md")) }
-            ?: return emptyList()
+        val dir = getRootDirectory() ?: return emptyList()
+        val files =
+            dir.listFiles().filter { it.name?.matches(Regex("\\d{4}-\\d{2}-\\d{2}\\.md")) == true }
 
-        return files.sortedDescending().flatMap {
-            parseFile(it)
+        return files.sortedByDescending { it.name }.flatMap { file ->
+            parseFile(file)
         }
     }
 
     fun getNotesForDate(date: String): List<Note> {
-        val file = File(getDirectory(), "$date.md")
-        if (!file.exists()) return emptyList()
+        val dir = getRootDirectory() ?: return emptyList()
+        val file = dir.findFile("$date.md") ?: return emptyList()
         return parseFile(file)
     }
 
-    private fun parseFile(file: File): List<Note> {
-        val dateStr = file.nameWithoutExtension
-        val lines = file.readLines()
+    private fun parseFile(file: DocumentFile): List<Note> {
+        val dateStr = file.name?.removeSuffix(".md") ?: return emptyList()
+        val content = readText(file) ?: return emptyList()
+        val lines = content.lines()
+
         val notes = mutableListOf<Note>()
         var inJournal = false
         var currentNoteTime: String? = null
@@ -49,7 +56,7 @@ class NoteRepository(private val context: Context) {
             if (!inJournal) continue
 
             // Check for list item with time "- HH:mm"
-            // Regex: ^- (\d{2}:\d{2})\s*(.*)
+            // Regex: ^- (\\d{2}:\\d{2})\\s*(.*)
             val match = Regex("^-\\s+(\\d{2}:\\d{2})\\s*(.*)").find(line)
             if (match != null) {
                 // Save previous note if exists
@@ -75,22 +82,24 @@ class NoteRepository(private val context: Context) {
     }
 
     fun addNote(note: Note) {
-        val file = File(getDirectory(), "${note.date}.md")
-        if (!file.exists()) {
-            createFile(file, note.date)
+        val dir = getRootDirectory() ?: return
+        var file = dir.findFile("${note.date}.md")
+
+        if (file == null) {
+            file = dir.createFile("text/markdown", "${note.date}.md")
+        }
+        if (file != null) {
+            createFileContent(file, note.date)
         }
 
+        if (file == null) return
+
         // Append to ## Journal
-        // We need to insert it in the correct place? Or just append? 
-        // Spec says "append under ## Journal with timestamp".
-        // Appending is easiest.
-        
-        val content = file.readText()
+        val content = readText(file) ?: ""
         val journalHeader = "## Journal"
-        
+
         if (!content.contains(journalHeader)) {
-            // Append header if missing (should not happen if created correctly)
-            file.appendText("\n\n$journalHeader\n")
+            appendText(file, "\n\n$journalHeader\n")
         }
 
         val noteEntry = buildString {
@@ -101,19 +110,13 @@ class NoteRepository(private val context: Context) {
                 append(note.content.replace("\n", "\n    "))
             }
         }
-        
-        // Naive append: just append to end of file.
-        // Assuming ## Journal is the last section or we just append to it.
-        // If there are other sections after Journal, this might break.
-        // Spec only mentions ## Memo and ## Journal.
-        // Let's assume ## Journal is likely at the end or we can just append.
-        
-        file.appendText(noteEntry)
+
+        appendText(file, noteEntry)
     }
 
     fun updateNote(date: String, index: Int, newContent: String) {
-        val file = File(getDirectory(), "$date.md")
-        if (!file.exists()) return
+        val dir = getRootDirectory() ?: return
+        val file = dir.findFile("$date.md") ?: return
 
         val notes = parseFile(file).toMutableList()
         if (index in notes.indices) {
@@ -124,8 +127,8 @@ class NoteRepository(private val context: Context) {
     }
 
     fun deleteNote(date: String, index: Int) {
-        val file = File(getDirectory(), "$date.md")
-        if (!file.exists()) return
+        val dir = getRootDirectory() ?: return
+        val file = dir.findFile("$date.md") ?: return
 
         val notes = parseFile(file).toMutableList()
         if (index in notes.indices) {
@@ -134,12 +137,10 @@ class NoteRepository(private val context: Context) {
         }
     }
 
-    private fun createFile(file: File, date: String) {
-        // Create frontmatter
-        val now = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss")) + "+09:00" // Hardcoded timezone for now or use system? Spec has +09:00.
-        // I'll use system offset but formatted similarly if possible, or just strict spec example.
-        // Spec: date: "2025-12-29T12:39:00+09:00"
-        
+    private fun createFileContent(file: DocumentFile, date: String) {
+        val now = LocalDateTime.now()
+            .format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss")) + "+09:00"
+
         val text = """
 ---
 date: "$now"
@@ -159,29 +160,28 @@ exercise_min:
 
 ## Journal
 """.trimIndent()
-        file.writeText(text)
+        writeText(file, text)
     }
 
-    private fun rewriteFile(file: File, notes: List<Note>) {
-        // Read file up to ## Journal
-        val lines = file.readLines()
+    private fun rewriteFile(file: DocumentFile, notes: List<Note>) {
+        val content = readText(file) ?: return
+        val lines = content.lines()
         val sb = StringBuilder()
         var inJournal = false
-        
+
         for (line in lines) {
             if (line.trim() == "## Journal") {
                 sb.append(line).append("\n")
                 inJournal = true
-                break // Stop reading original file content for journal part
+                break
             }
             sb.append(line).append("\n")
         }
-        
+
         if (!inJournal) {
-             sb.append("\n## Journal\n")
+            sb.append("\n## Journal\n")
         }
 
-        // Write notes
         for (note in notes) {
             sb.append("\n- ")
             sb.append(note.time)
@@ -190,7 +190,41 @@ exercise_min:
                 sb.append(note.content.replace("\n", "\n    "))
             }
         }
-        
-        file.writeText(sb.toString())
+        writeText(file, sb.toString())
+    }
+
+    private fun readText(file: DocumentFile): String? {
+        return try {
+            context.contentResolver.openInputStream(file.uri)?.use {
+                BufferedReader(InputStreamReader(it)).readText()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    private fun writeText(file: DocumentFile, text: String) {
+        try {
+            context.contentResolver.openOutputStream(file.uri, "w")?.use {
+                it.write(text.toByteArray())
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun appendText(file: DocumentFile, text: String) {
+        try {
+            context.contentResolver.openOutputStream(file.uri, "wa")?.use {
+                it.write(text.toByteArray())
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    fun isStorageConfigured(): Boolean {
+        return prefs.storageUri != null
     }
 }

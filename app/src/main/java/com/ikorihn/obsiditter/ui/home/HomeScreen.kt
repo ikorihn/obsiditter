@@ -15,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -46,17 +47,16 @@ class HomeViewModel(private val repository: NoteRepository) : ViewModel() {
         private set
 
     fun loadNotes() {
+        if (!repository.isStorageConfigured()) {
+            notes = emptyList()
+            return
+        }
         notes = repository.getAllNotes()
     }
 
     fun deleteNote(note: Note) {
-        // Find index. This is a bit tricky since we flattened the list.
-        // We need to know the index IN THE FILE.
-        // For now, let's assume we can find it by content/time matching or reload.
-        // But the repository delete expects (date, index).
-        // I need to map the flat list back to file index?
-        // Or change repository to find match.
-        // Let's reload and find index.
+        if (!repository.isStorageConfigured()) return
+        
         val dailyNotes = repository.getNotesForDate(note.date)
         val index = dailyNotes.indexOfFirst { it.time == note.time && it.content == note.content }
         if (index != -1) {
@@ -77,7 +77,8 @@ class HomeViewModelFactory(private val context: Context) : androidx.lifecycle.Vi
 @Composable
 fun HomeScreen(
     onAddNote: () -> Unit,
-    onEditNote: (String, Int) -> Unit
+    onEditNote: (String, Int) -> Unit,
+    onSettings: () -> Unit
 ) {
     val context = LocalContext.current
     val viewModel: HomeViewModel = viewModel(factory = HomeViewModelFactory(context))
@@ -88,7 +89,16 @@ fun HomeScreen(
     }
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Obsiditter") }) },
+        topBar = { 
+            TopAppBar(
+                title = { Text("Obsiditter") },
+                actions = {
+                    IconButton(onClick = onSettings) {
+                        Icon(Icons.Default.Settings, contentDescription = "Settings")
+                    }
+                }
+            ) 
+        },
         floatingActionButton = {
             FloatingActionButton(onClick = onAddNote) {
                 Icon(Icons.Default.Add, contentDescription = "Add Note")
@@ -96,32 +106,26 @@ fun HomeScreen(
         }
     ) { paddingValues ->
         Box(modifier = Modifier.padding(paddingValues).fillMaxSize()) {
-            LazyColumn(modifier = Modifier.fillMaxSize()) {
-                itemsIndexed(viewModel.notes) { _, note ->
-                    NoteItem(
-                        note = note,
-                        onEdit = { 
-                             // Find index for this note to pass to edit
-                             // Re-instantiate repo is cheap enough or ask VM
-                             // ideally VM should provide this.
-                             // For this prototype, I'll calculate index here roughly
-                             // But finding index in the list of "All Notes" is different from "Index in File".
-                             // We need "Index in File".
-                             // Let's delegate finding index to VM or Repository logic if possible.
-                             // Or better: Note object should carry its index? No, index changes.
-                             
-                             // Quick hack: Search again in VM.
-                             // But wait, the callback expects (date, index).
-                             // I'll calculate it on the fly.
-                             val repo = NoteRepository(context)
-                             val dailyNotes = repo.getNotesForDate(note.date)
-                             val index = dailyNotes.indexOfFirst { it.time == note.time && it.content == note.content }
-                             if (index != -1) {
-                                 onEditNote(note.date, index)
-                             }
-                        },
-                        onDelete = { showDeleteDialog = note }
-                    )
+            if (viewModel.notes.isEmpty()) {
+                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                     Text("No notes found. Check storage settings.")
+                 }
+            } else {
+                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    itemsIndexed(viewModel.notes) { _, note ->
+                        NoteItem(
+                            note = note,
+                            onEdit = { 
+                                 val repo = NoteRepository(context)
+                                 val dailyNotes = repo.getNotesForDate(note.date)
+                                 val index = dailyNotes.indexOfFirst { it.time == note.time && it.content == note.content }
+                                 if (index != -1) {
+                                     onEditNote(note.date, index)
+                                 }
+                            },
+                            onDelete = { showDeleteDialog = note }
+                        )
+                    }
                 }
             }
         }
