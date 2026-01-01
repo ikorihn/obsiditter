@@ -50,10 +50,10 @@ import kotlinx.coroutines.launch
 class HomeViewModel(private val repository: NoteRepository) : ViewModel() {
     var notes by mutableStateOf<List<Note>>(emptyList())
         private set
-    
+
     var isLoading by mutableStateOf(false)
         private set
-        
+
     var isEndReached by mutableStateOf(false)
         private set
 
@@ -90,7 +90,7 @@ class HomeViewModel(private val repository: NoteRepository) : ViewModel() {
             isLoading = false
         }
     }
-    
+
     private suspend fun loadMoreNotesInternal() {
         val offset = currentPage * pageSize
         if (offset >= allFiles.size) {
@@ -101,16 +101,16 @@ class HomeViewModel(private val repository: NoteRepository) : ViewModel() {
         val limit = minOf(pageSize, allFiles.size - offset)
         // subList end is exclusive
         val filesToParse = allFiles.subList(offset, offset + limit)
-        
+
         val newNotes = repository.parseNotes(filesToParse)
         notes = notes + newNotes
         currentPage++
-        
+
         if (offset + limit >= allFiles.size) {
             isEndReached = true
         }
     }
-    
+
     // Helper to find index for edit
     suspend fun findNoteIndex(note: Note): Int {
         val dailyNotes = repository.getNotesForDate(note.date)
@@ -119,7 +119,7 @@ class HomeViewModel(private val repository: NoteRepository) : ViewModel() {
 
     fun deleteNote(note: Note) {
         if (!repository.isStorageConfigured()) return
-        
+
         viewModelScope.launch {
             val index = findNoteIndex(note)
             if (index != -1) {
@@ -129,14 +129,15 @@ class HomeViewModel(private val repository: NoteRepository) : ViewModel() {
             }
         }
     }
-    
+
     private fun minOf(a: Int, b: Int): Int {
         return if (a <= b) a else b
     }
 }
 
 // Simple factory helper
-class HomeViewModelFactory(private val context: Context) : androidx.lifecycle.ViewModelProvider.Factory {
+class HomeViewModelFactory(private val context: Context) :
+    androidx.lifecycle.ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         return HomeViewModel(NoteRepository(context)) as T
     }
@@ -159,7 +160,7 @@ fun HomeScreen(
     }
 
     Scaffold(
-        topBar = { 
+        topBar = {
             TopAppBar(
                 title = { Text("Obsiditter") },
                 actions = {
@@ -167,7 +168,7 @@ fun HomeScreen(
                         Icon(Icons.Default.Settings, contentDescription = "Settings")
                     }
                 }
-            ) 
+            )
         },
         floatingActionButton = {
             FloatingActionButton(onClick = onAddNote) {
@@ -175,11 +176,15 @@ fun HomeScreen(
             }
         }
     ) { paddingValues ->
-        Box(modifier = Modifier.padding(paddingValues).fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .padding(paddingValues)
+                .fillMaxSize()
+        ) {
             if (viewModel.notes.isEmpty() && !viewModel.isLoading) {
-                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                     Text("No notes found. Check storage settings.")
-                 }
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("No notes found. Check storage settings.")
+                }
             } else {
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
                     itemsIndexed(viewModel.notes) { index, note ->
@@ -189,24 +194,29 @@ fun HomeScreen(
                                 viewModel.loadMoreNotes()
                             }
                         }
-                        
+
                         NoteItem(
                             note = note,
-                            onEdit = { 
-                                 scope.launch {
-                                     val idx = viewModel.findNoteIndex(note)
-                                     if (idx != -1) {
-                                         onEditNote(note.date, idx)
-                                     }
-                                 }
+                            onEdit = {
+                                scope.launch {
+                                    val idx = viewModel.findNoteIndex(note)
+                                    if (idx != -1) {
+                                        onEditNote(note.date, idx)
+                                    }
+                                }
                             },
                             onDelete = { showDeleteDialog = note }
                         )
                     }
-                    
+
                     if (viewModel.isLoading) {
                         item {
-                            Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
                                 CircularProgressIndicator()
                             }
                         }
@@ -258,10 +268,18 @@ fun NoteItem(
                 )
                 Spacer(Modifier.weight(1f))
                 IconButton(onClick = onEdit, modifier = Modifier.size(24.dp)) {
-                    Icon(Icons.Default.Edit, contentDescription = "Edit", modifier = Modifier.size(16.dp))
+                    Icon(
+                        Icons.Default.Edit,
+                        contentDescription = "Edit",
+                        modifier = Modifier.size(16.dp)
+                    )
                 }
                 IconButton(onClick = onDelete, modifier = Modifier.size(24.dp)) {
-                    Icon(Icons.Default.Delete, contentDescription = "Delete", modifier = Modifier.size(16.dp))
+                    Icon(
+                        Icons.Default.Delete,
+                        contentDescription = "Delete",
+                        modifier = Modifier.size(16.dp)
+                    )
                 }
             }
             Spacer(modifier = Modifier.size(8.dp))

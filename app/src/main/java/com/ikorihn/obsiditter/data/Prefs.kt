@@ -5,7 +5,8 @@ import android.net.Uri
 import androidx.core.content.edit
 
 class Prefs(context: Context) {
-    private val sharedPreferences = context.getSharedPreferences("obsiditter_prefs", Context.MODE_PRIVATE)
+    private val sharedPreferences =
+        context.getSharedPreferences("obsiditter_prefs", Context.MODE_PRIVATE)
 
     var storageUri: Uri?
         get() {

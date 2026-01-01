@@ -76,7 +76,7 @@ fun SettingsScreen(
             Button(onClick = { launcher.launch(null) }) {
                 Text("Select Folder")
             }
-            
+
             if (currentUri != null) {
                 Spacer(modifier = Modifier.height(16.dp))
                 Button(onClick = onNavigateBack) {

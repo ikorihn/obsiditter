@@ -53,8 +53,7 @@ fun AddNoteScreen(
                 }
             )
         }
-    ) {
-paddingValues ->
+    ) { paddingValues ->
         Column(
             modifier = Modifier
                 .padding(paddingValues)
@@ -84,9 +83,10 @@ paddingValues ->
                             val now = LocalDateTime.now()
                             val date = now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
                             val time = now.format(DateTimeFormatter.ofPattern("HH:mm"))
-                            
+
                             val fullContent = if (tags.isNotBlank()) {
-                                val tagString = tags.split(" ").joinToString(" ") { if (it.startsWith("#")) it else "#$it" }
+                                val tagString = tags.split(" ")
+                                    .joinToString(" ") { if (it.startsWith("#")) it else "#$it" }
                                 "$content\n$tagString"
                             } else {
                                 content

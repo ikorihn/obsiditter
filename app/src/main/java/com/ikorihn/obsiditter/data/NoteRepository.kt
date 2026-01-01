@@ -5,7 +5,6 @@ import androidx.documentfile.provider.DocumentFile
 import com.ikorihn.obsiditter.model.Note
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.intellij.markdown.ast.ASTNode
 import org.intellij.markdown.ast.getTextInNode
 import org.intellij.markdown.flavours.commonmark.CommonMarkFlavourDescriptor
 import org.intellij.markdown.parser.MarkdownParser
@@ -29,7 +28,8 @@ class NoteRepository(private val context: Context) {
 
     suspend fun getSortedNoteFiles(): List<DocumentFile> = withContext(Dispatchers.IO) {
         val dir = getRootDirectory() ?: return@withContext emptyList()
-        val files = dir.listFiles().filter { it.name?.matches(Regex("\\d{4}-\\d{2}-\\d{2}\\.md")) == true }
+        val files =
+            dir.listFiles().filter { it.name?.matches(Regex("\\d{4}-\\d{2}-\\d{2}\\.md")) == true }
         files.sortedByDescending { it.name }
     }
 
@@ -74,26 +74,26 @@ class NoteRepository(private val context: Context) {
                 for (item in node.children) {
                     if (item.type.name == "LIST_ITEM") {
                         val itemText = item.getTextInNode(content).toString()
-                        
+
                         val lines = itemText.lines()
                         if (lines.isEmpty()) continue
-                        
+
                         val firstLine = lines[0].trim()
                         val match = Regex("^[-*+]\\s+(\\d{2}:\\d{2})\\s*(.*)").find(firstLine)
-                        
+
                         if (match != null) {
                             val time = match.groupValues[1]
                             val firstLineContent = match.groupValues[2]
-                            
+
                             val contentBuilder = StringBuilder()
                             if (firstLineContent.isNotBlank()) {
                                 contentBuilder.append(firstLineContent)
                             }
-                            
+
                             for (i in 1 until lines.size) {
                                 contentBuilder.append("\n").append(lines[i].trim())
                             }
-                            
+
                             notes.add(Note(dateStr, time, contentBuilder.toString().trim()))
                         }
                     }
@@ -110,24 +110,24 @@ class NoteRepository(private val context: Context) {
         if (file == null) {
             file = dir.createFile("text/markdown", "${note.date}.md")
             if (file != null) {
-                 createFileContent(file, note.date)
+                createFileContent(file, note.date)
             }
         }
-        
+
         if (file == null) return@withContext
 
         val content = readText(file) ?: ""
         if (content.isEmpty() && file.length() == 0L) {
-             createFileContent(file, note.date)
+            createFileContent(file, note.date)
         }
-        
+
         // Re-read content in case it was created
         val currentContent = readText(file) ?: ""
         val flavour = CommonMarkFlavourDescriptor()
         val parsedTree = MarkdownParser(flavour).buildMarkdownTreeFromString(currentContent)
 
         var foundJournal = false
-        
+
         for (node in parsedTree.children) {
             if (node.type.name == "ATX_2") {
                 val text = node.getTextInNode(currentContent).toString().trim()
@@ -152,22 +152,23 @@ class NoteRepository(private val context: Context) {
             val toAppend = "\n\n## Journal\n$noteEntry"
             appendText(file, toAppend)
         } else {
-             val prefix = if (currentContent.endsWith("\n")) "" else "\n"
-             appendText(file, prefix + noteEntry)
+            val prefix = if (currentContent.endsWith("\n")) "" else "\n"
+            appendText(file, prefix + noteEntry)
         }
     }
 
-    suspend fun updateNote(date: String, index: Int, newContent: String) = withContext(Dispatchers.IO) {
-        val dir = getRootDirectory() ?: return@withContext
-        val file = dir.findFile("$date.md") ?: return@withContext
+    suspend fun updateNote(date: String, index: Int, newContent: String) =
+        withContext(Dispatchers.IO) {
+            val dir = getRootDirectory() ?: return@withContext
+            val file = dir.findFile("$date.md") ?: return@withContext
 
-        val notes = parseFile(file).toMutableList()
-        if (index in notes.indices) {
-            val oldNote = notes[index]
-            notes[index] = oldNote.copy(content = newContent)
-            rewriteFile(file, notes)
+            val notes = parseFile(file).toMutableList()
+            if (index in notes.indices) {
+                val oldNote = notes[index]
+                notes[index] = oldNote.copy(content = newContent)
+                rewriteFile(file, notes)
+            }
         }
-    }
 
     suspend fun deleteNote(date: String, index: Int) = withContext(Dispatchers.IO) {
         val dir = getRootDirectory() ?: return@withContext
@@ -210,18 +211,18 @@ exercise_min:
         val content = readText(file) ?: return
         val flavour = CommonMarkFlavourDescriptor()
         val parsedTree = MarkdownParser(flavour).buildMarkdownTreeFromString(content)
-        
+
         var journalStartOffset = -1
         var journalEndOffset = -1
         var foundJournal = false
-        
+
         for (node in parsedTree.children) {
             if (node.type.name == "ATX_2") {
                 val text = node.getTextInNode(content).toString().trim()
                 if (text.endsWith("Journal")) {
                     foundJournal = true
                     journalStartOffset = node.startOffset
-                    journalEndOffset = node.endOffset 
+                    journalEndOffset = node.endOffset
                     continue
                 } else if (foundJournal) {
                     journalEndOffset = node.startOffset
@@ -229,37 +230,37 @@ exercise_min:
                 }
             }
             if (foundJournal) {
-                 journalEndOffset = node.endOffset
+                journalEndOffset = node.endOffset
             }
         }
-        
+
         if (!foundJournal) {
-             val sb = StringBuilder(content)
-             sb.append("\n\n## Journal\n")
-             for (note in notes) {
+            val sb = StringBuilder(content)
+            sb.append("\n\n## Journal\n")
+            for (note in notes) {
                 appendNoteToStringBuilder(sb, note)
-             }
-             writeText(file, sb.toString())
-             return
+            }
+            writeText(file, sb.toString())
+            return
         }
-        
+
         val sb = StringBuilder()
         sb.append(content.substring(0, journalStartOffset))
         sb.append("## Journal\n")
-        
+
         for (note in notes) {
             appendNoteToStringBuilder(sb, note)
         }
-        
+
         if (journalEndOffset < content.length) {
-             val rest = content.substring(journalEndOffset)
-             if (rest.isNotBlank() && !rest.startsWith("\n")) sb.append("\n")
-             sb.append(rest)
+            val rest = content.substring(journalEndOffset)
+            if (rest.isNotBlank() && !rest.startsWith("\n")) sb.append("\n")
+            sb.append(rest)
         }
-        
+
         writeText(file, sb.toString())
     }
-    
+
     private fun appendNoteToStringBuilder(sb: StringBuilder, note: Note) {
         sb.append("- ")
         sb.append(note.time)
