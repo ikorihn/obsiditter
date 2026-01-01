@@ -3,6 +3,8 @@ package com.ikorihn.obsiditter.data
 import android.content.Context
 import androidx.documentfile.provider.DocumentFile
 import com.ikorihn.obsiditter.model.Note
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.intellij.markdown.ast.ASTNode
 import org.intellij.markdown.ast.getTextInNode
 import org.intellij.markdown.flavours.commonmark.CommonMarkFlavourDescriptor
@@ -25,20 +27,25 @@ class NoteRepository(private val context: Context) {
         }
     }
 
-    fun getAllNotes(): List<Note> {
-        val dir = getRootDirectory() ?: return emptyList()
-        val files =
-            dir.listFiles().filter { it.name?.matches(Regex("\\d{4}-\\d{2}-\\d{2}\\.md")) == true }
-
-        return files.sortedByDescending { it.name }.flatMap {
-            parseFile(it)
-        }
+    suspend fun getSortedNoteFiles(): List<DocumentFile> = withContext(Dispatchers.IO) {
+        val dir = getRootDirectory() ?: return@withContext emptyList()
+        val files = dir.listFiles().filter { it.name?.matches(Regex("\\d{4}-\\d{2}-\\d{2}\\.md")) == true }
+        files.sortedByDescending { it.name }
     }
 
-    fun getNotesForDate(date: String): List<Note> {
-        val dir = getRootDirectory() ?: return emptyList()
-        val file = dir.findFile("$date.md") ?: return emptyList()
-        return parseFile(file)
+    suspend fun parseNotes(files: List<DocumentFile>): List<Note> = withContext(Dispatchers.IO) {
+        files.flatMap { parseFile(it) }
+    }
+
+    suspend fun getAllNotes(): List<Note> = withContext(Dispatchers.IO) {
+        val files = getSortedNoteFiles()
+        parseNotes(files)
+    }
+
+    suspend fun getNotesForDate(date: String): List<Note> = withContext(Dispatchers.IO) {
+        val dir = getRootDirectory() ?: return@withContext emptyList()
+        val file = dir.findFile("$date.md") ?: return@withContext emptyList()
+        parseFile(file)
     }
 
     private fun parseFile(file: DocumentFile): List<Note> {
@@ -72,7 +79,7 @@ class NoteRepository(private val context: Context) {
                         if (lines.isEmpty()) continue
                         
                         val firstLine = lines[0].trim()
-                        val match = Regex("^[-*+]\\s+(\\d{2}:\\[d{2})\\s*(.*)").find(firstLine)
+                        val match = Regex("^[-*+]\\s+(\\d{2}:\\d{2})\\s*(.*)").find(firstLine)
                         
                         if (match != null) {
                             val time = match.groupValues[1]
@@ -96,8 +103,8 @@ class NoteRepository(private val context: Context) {
         return notes
     }
 
-    fun addNote(note: Note) {
-        val dir = getRootDirectory() ?: return
+    suspend fun addNote(note: Note) = withContext(Dispatchers.IO) {
+        val dir = getRootDirectory() ?: return@withContext
         var file = dir.findFile("${note.date}.md")
 
         if (file == null) {
@@ -107,7 +114,7 @@ class NoteRepository(private val context: Context) {
             }
         }
         
-        if (file == null) return
+        if (file == null) return@withContext
 
         val content = readText(file) ?: ""
         if (content.isEmpty() && file.length() == 0L) {
@@ -145,17 +152,14 @@ class NoteRepository(private val context: Context) {
             val toAppend = "\n\n## Journal\n$noteEntry"
             appendText(file, toAppend)
         } else {
-             // For now, simpler to append to end. 
-             // If robustness is needed for insertion in middle, logic would be complex here.
-             // Given the spec implies Journal is the main appended section.
              val prefix = if (currentContent.endsWith("\n")) "" else "\n"
              appendText(file, prefix + noteEntry)
         }
     }
 
-    fun updateNote(date: String, index: Int, newContent: String) {
-        val dir = getRootDirectory() ?: return
-        val file = dir.findFile("$date.md") ?: return
+    suspend fun updateNote(date: String, index: Int, newContent: String) = withContext(Dispatchers.IO) {
+        val dir = getRootDirectory() ?: return@withContext
+        val file = dir.findFile("$date.md") ?: return@withContext
 
         val notes = parseFile(file).toMutableList()
         if (index in notes.indices) {
@@ -165,9 +169,9 @@ class NoteRepository(private val context: Context) {
         }
     }
 
-    fun deleteNote(date: String, index: Int) {
-        val dir = getRootDirectory() ?: return
-        val file = dir.findFile("$date.md") ?: return
+    suspend fun deleteNote(date: String, index: Int) = withContext(Dispatchers.IO) {
+        val dir = getRootDirectory() ?: return@withContext
+        val file = dir.findFile("$date.md") ?: return@withContext
 
         val notes = parseFile(file).toMutableList()
         if (index in notes.indices) {

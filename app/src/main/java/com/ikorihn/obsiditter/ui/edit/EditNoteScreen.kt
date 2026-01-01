@@ -21,11 +21,13 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.ikorihn.obsiditter.data.NoteRepository
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -37,6 +39,7 @@ fun EditNoteScreen(
     val context = LocalContext.current
     val repository = remember { NoteRepository(context) }
     var content by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(date, index) {
         val notes = repository.getNotesForDate(date)
@@ -74,8 +77,10 @@ fun EditNoteScreen(
             Spacer(modifier = Modifier.size(16.dp))
             Button(
                 onClick = {
-                    repository.updateNote(date, index, content)
-                    onNavigateBack()
+                    scope.launch {
+                        repository.updateNote(date, index, content)
+                        onNavigateBack()
+                    }
                 },
                 modifier = Modifier.fillMaxWidth()
             ) {

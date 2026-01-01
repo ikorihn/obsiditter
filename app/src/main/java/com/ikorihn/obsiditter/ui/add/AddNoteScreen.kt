@@ -20,12 +20,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.ikorihn.obsiditter.data.NoteRepository
 import com.ikorihn.obsiditter.model.Note
+import kotlinx.coroutines.launch
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
@@ -38,6 +40,7 @@ fun AddNoteScreen(
     val repository = remember { NoteRepository(context) }
     var content by remember { mutableStateOf("") }
     var tags by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
 
     Scaffold(
         topBar = {
@@ -50,7 +53,8 @@ fun AddNoteScreen(
                 }
             )
         }
-    ) { paddingValues ->
+    ) {
+paddingValues ->
         Column(
             modifier = Modifier
                 .padding(paddingValues)
@@ -76,19 +80,21 @@ fun AddNoteScreen(
             Button(
                 onClick = {
                     if (content.isNotBlank()) {
-                        val now = LocalDateTime.now()
-                        val date = now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
-                        val time = now.format(DateTimeFormatter.ofPattern("HH:mm"))
-                        
-                        val fullContent = if (tags.isNotBlank()) {
-                            val tagString = tags.split(" ").joinToString(" ") { if (it.startsWith("#")) it else "#$it" }
-                            "$content\n$tagString"
-                        } else {
-                            content
-                        }
+                        scope.launch {
+                            val now = LocalDateTime.now()
+                            val date = now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+                            val time = now.format(DateTimeFormatter.ofPattern("HH:mm"))
+                            
+                            val fullContent = if (tags.isNotBlank()) {
+                                val tagString = tags.split(" ").joinToString(" ") { if (it.startsWith("#")) it else "#$it" }
+                                "$content\n$tagString"
+                            } else {
+                                content
+                            }
 
-                        repository.addNote(Note(date, time, fullContent))
-                        onNavigateBack()
+                            repository.addNote(Note(date, time, fullContent))
+                            onNavigateBack()
+                        }
                     }
                 },
                 modifier = Modifier.fillMaxWidth()
