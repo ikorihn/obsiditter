@@ -2,6 +2,7 @@ package com.ikorihn.obsiditter.data
 
 import android.content.Context
 import android.provider.DocumentsContract
+import android.util.Log
 import androidx.documentfile.provider.DocumentFile
 import com.ikorihn.obsiditter.model.Note
 import kotlinx.coroutines.Dispatchers
@@ -11,8 +12,11 @@ import org.intellij.markdown.flavours.commonmark.CommonMarkFlavourDescriptor
 import org.intellij.markdown.parser.MarkdownParser
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import java.time.Duration
+import java.time.Instant
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+
 
 data class NoteFile(
     val name: String,
@@ -165,9 +169,9 @@ class NoteRepository(private val context: Context) {
         return notes
     }
 
-    suspend fun addNote(note: Note) = withContext(Dispatchers.IO) {
+    suspend fun addNote(note: Note, noteFile: NoteFile?) = withContext(Dispatchers.IO) {
         val dir = getRootDirectory() ?: return@withContext
-        var file = dir.findFile("${note.date}.md")
+        var file = noteFile?.file
 
         if (file == null) {
             file = dir.createFile("text/markdown", "${note.date}.md")

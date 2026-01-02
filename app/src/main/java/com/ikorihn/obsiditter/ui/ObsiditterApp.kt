@@ -9,7 +9,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.ikorihn.obsiditter.data.Prefs
-import com.ikorihn.obsiditter.ui.add.AddNoteScreen
 import com.ikorihn.obsiditter.ui.edit.EditNoteScreen
 import com.ikorihn.obsiditter.ui.home.HomeScreen
 import com.ikorihn.obsiditter.ui.settings.SettingsScreen
@@ -25,7 +24,6 @@ fun ObsiditterApp() {
     NavHost(navController = navController, startDestination = startDestination) {
         composable("home") {
             HomeScreen(
-                onAddNote = { navController.navigate("add") },
                 onEditNote = { date, index -> navController.navigate("edit/$date/$index") },
                 onSettings = { navController.navigate("settings") }
             )
@@ -37,11 +35,6 @@ fun ObsiditterApp() {
                         popUpTo("settings") { inclusive = true }
                     }
                 }
-            )
-        }
-        composable("add") {
-            AddNoteScreen(
-                onNavigateBack = { navController.popBackStack() }
             )
         }
         composable(

@@ -7,24 +7,28 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -46,6 +50,8 @@ import com.ikorihn.obsiditter.data.NoteFile
 import com.ikorihn.obsiditter.data.NoteRepository
 import com.ikorihn.obsiditter.model.Note
 import kotlinx.coroutines.launch
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 
 class HomeViewModel(private val repository: NoteRepository) : ViewModel() {
     var notes by mutableStateOf<List<Note>>(emptyList())
@@ -99,7 +105,6 @@ class HomeViewModel(private val repository: NoteRepository) : ViewModel() {
         }
 
         val limit = minOf(pageSize, allFiles.size - offset)
-        // subList end is exclusive
         val filesToParse = allFiles.subList(offset, offset + limit)
 
         val newNotes = repository.parseNotes(filesToParse)
@@ -111,10 +116,30 @@ class HomeViewModel(private val repository: NoteRepository) : ViewModel() {
         }
     }
 
-    // Helper to find index for edit
     suspend fun findNoteIndex(note: Note): Int {
         val dailyNotes = repository.getNotesForDate(note.date)
         return dailyNotes.indexOfFirst { it.time == note.time && it.content == note.content }
+    }
+
+    fun addNote(content: String, tags: String) {
+        if (!repository.isStorageConfigured()) return
+        viewModelScope.launch {
+            val now = LocalDateTime.now()
+            val date = now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+            val time = now.format(DateTimeFormatter.ofPattern("HH:mm"))
+
+            val fullContent = if (tags.isNotBlank()) {
+                val tagString = tags.split(" ")
+                    .joinToString(" ") { if (it.startsWith("#")) it else "#$it" }
+                "$content\n$tagString"
+            } else {
+                content
+            }
+
+            val noteFile = allFiles.find { it.name == "${date}.md"}
+            repository.addNote(Note(date, time, fullContent), noteFile)
+            loadNotes()
+        }
     }
 
     fun deleteNote(note: Note) {
@@ -124,7 +149,6 @@ class HomeViewModel(private val repository: NoteRepository) : ViewModel() {
             val index = findNoteIndex(note)
             if (index != -1) {
                 repository.deleteNote(note.date, index)
-                // Reload or remove locally. Reloading is safer for pagination consistency for now.
                 loadNotes()
             }
         }
@@ -135,7 +159,6 @@ class HomeViewModel(private val repository: NoteRepository) : ViewModel() {
     }
 }
 
-// Simple factory helper
 class HomeViewModelFactory(private val context: Context) :
     androidx.lifecycle.ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -146,7 +169,6 @@ class HomeViewModelFactory(private val context: Context) :
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
-    onAddNote: () -> Unit,
     onEditNote: (String, Int) -> Unit,
     onSettings: () -> Unit
 ) {
@@ -154,6 +176,9 @@ fun HomeScreen(
     val viewModel: HomeViewModel = viewModel(factory = HomeViewModelFactory(context))
     var showDeleteDialog by remember { mutableStateOf<Note?>(null) }
     val scope = rememberCoroutineScope()
+
+    var inputContent by remember { mutableStateOf("") }
+    var inputTags by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
         viewModel.loadNotes()
@@ -170,9 +195,52 @@ fun HomeScreen(
                 }
             )
         },
-        floatingActionButton = {
-            FloatingActionButton(onClick = onAddNote) {
-                Icon(Icons.Default.Add, contentDescription = "Add Note")
+        bottomBar = {
+            Surface(
+                tonalElevation = 3.dp,
+                shadowElevation = 8.dp
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = inputContent,
+                        onValueChange = { inputContent = it },
+                        label = { Text("What's happening?") },
+                        modifier = Modifier.fillMaxWidth(),
+                        maxLines = 5
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = inputTags,
+                            onValueChange = { inputTags = it },
+                            label = { Text("Tags") },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Button(
+                            onClick = {
+                                if (inputContent.isNotBlank()) {
+                                    viewModel.addNote(inputContent, inputTags)
+                                    inputContent = ""
+                                    inputTags = ""
+                                }
+                            },
+                            enabled = inputContent.isNotBlank()
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Post")
+                            Spacer(Modifier.width(4.dp))
+                            Text("Post")
+                        }
+                    }
+                }
             }
         }
     ) { paddingValues ->
@@ -188,7 +256,6 @@ fun HomeScreen(
             } else {
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
                     itemsIndexed(viewModel.notes) { index, note ->
-                        // Pagination trigger
                         if (index >= viewModel.notes.size - 1 && !viewModel.isEndReached && !viewModel.isLoading) {
                             LaunchedEffect(Unit) {
                                 viewModel.loadMoreNotes()
