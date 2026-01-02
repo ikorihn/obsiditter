@@ -11,6 +11,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
@@ -187,6 +190,7 @@ fun HomeScreen(
     Scaffold(
         topBar = {
             TopAppBar(
+                modifier = Modifier.statusBarsPadding(),
                 title = { Text("Obsiditter") },
                 actions = {
                     IconButton(onClick = onSettings) {
@@ -197,6 +201,9 @@ fun HomeScreen(
         },
         bottomBar = {
             Surface(
+                modifier = Modifier
+                    .navigationBarsPadding()
+                    .imePadding(),
                 tonalElevation = 3.dp,
                 shadowElevation = 8.dp
             ) {
