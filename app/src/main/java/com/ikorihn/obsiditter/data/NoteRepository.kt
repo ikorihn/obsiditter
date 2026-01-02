@@ -1,6 +1,7 @@
 package com.ikorihn.obsiditter.data
 
 import android.content.Context
+import android.provider.DocumentsContract
 import androidx.documentfile.provider.DocumentFile
 import com.ikorihn.obsiditter.model.Note
 import kotlinx.coroutines.Dispatchers
@@ -12,6 +13,11 @@ import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+
+data class NoteFile(
+    val name: String,
+    val file: DocumentFile
+)
 
 class NoteRepository(private val context: Context) {
 
@@ -26,15 +32,67 @@ class NoteRepository(private val context: Context) {
         }
     }
 
-    suspend fun getSortedNoteFiles(): List<DocumentFile> = withContext(Dispatchers.IO) {
-        val dir = getRootDirectory() ?: return@withContext emptyList()
-        val files =
-            dir.listFiles().filter { it.name?.matches(Regex("\\d{4}-\\d{2}-\\d{2}\\.md")) == true }
-        files.sortedByDescending { it.name }
+    suspend fun getSortedNoteFiles(): List<NoteFile> = withContext(Dispatchers.IO) {
+        val uri = prefs.storageUri ?: return@withContext emptyList()
+        val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(
+            uri,
+            DocumentsContract.getTreeDocumentId(uri)
+        )
+
+        val projection = arrayOf(
+            DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+            DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+            DocumentsContract.Document.COLUMN_MIME_TYPE
+        )
+
+        val sortOrder = "${DocumentsContract.Document.COLUMN_DISPLAY_NAME} DESC"
+
+        val result = mutableListOf<NoteFile>()
+        val regex = Regex("\\d{4}-\\d{2}-\\d{2}\\.md")
+
+        try {
+            context.contentResolver.query(
+                childrenUri,
+                projection,
+                null,
+                null,
+                sortOrder
+            )?.use { cursor ->
+                val idIndex = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+                val nameIndex =
+                    cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+
+                while (cursor.moveToNext()) {
+                    val name = cursor.getString(nameIndex) ?: continue
+
+                    if (regex.matches(name)) {
+                        val docId = cursor.getString(idIndex)
+                        val docUri = DocumentsContract.buildDocumentUriUsingTree(uri, docId)
+                        val file = DocumentFile.fromSingleUri(context, docUri)
+                        if (file != null) {
+                            result.add(NoteFile(name, file))
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return@withContext getRootDirectory()?.listFiles()
+                ?.filter { it.name?.matches(regex) == true }
+                ?.sortedByDescending { it.name }
+                ?.mapNotNull { file ->
+                    file.name?.let { NoteFile(it, file) }
+                }
+                ?: emptyList()
+        }
+
+        result.sortByDescending { it.name }
+
+        return@withContext result
     }
 
-    suspend fun parseNotes(files: List<DocumentFile>): List<Note> = withContext(Dispatchers.IO) {
-        files.flatMap { parseFile(it) }
+    suspend fun parseNotes(files: List<NoteFile>): List<Note> = withContext(Dispatchers.IO) {
+        files.flatMap { parseFile(it.file) }
     }
 
     suspend fun getAllNotes(): List<Note> = withContext(Dispatchers.IO) {
@@ -71,6 +129,7 @@ class NoteRepository(private val context: Context) {
             }
 
             if (foundJournal && node.type.name == "UNORDERED_LIST") {
+                val journals = mutableListOf<Note>()
                 for (item in node.children) {
                     if (item.type.name == "LIST_ITEM") {
                         val itemText = item.getTextInNode(content).toString()
@@ -94,10 +153,13 @@ class NoteRepository(private val context: Context) {
                                 contentBuilder.append("\n").append(lines[i].trim())
                             }
 
-                            notes.add(Note(dateStr, time, contentBuilder.toString().trim()))
+                            journals.add(Note(dateStr, time, contentBuilder.toString().trim()))
                         }
                     }
                 }
+
+                journals.sortByDescending { it.datetime }
+                notes.addAll(journals)
             }
         }
         return notes

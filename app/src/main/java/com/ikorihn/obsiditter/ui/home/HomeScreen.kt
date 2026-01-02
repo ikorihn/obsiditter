@@ -39,10 +39,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.ikorihn.obsiditter.data.NoteFile
 import com.ikorihn.obsiditter.data.NoteRepository
 import com.ikorihn.obsiditter.model.Note
 import kotlinx.coroutines.launch
@@ -57,9 +57,9 @@ class HomeViewModel(private val repository: NoteRepository) : ViewModel() {
     var isEndReached by mutableStateOf(false)
         private set
 
-    private var allFiles: List<DocumentFile> = emptyList()
+    private var allFiles: List<NoteFile> = emptyList()
     private var currentPage = 0
-    private val pageSize = 10
+    private val pageSize = 50
 
     fun loadNotes() {
         if (!repository.isStorageConfigured()) {
