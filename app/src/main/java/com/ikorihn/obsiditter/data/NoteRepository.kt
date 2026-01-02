@@ -12,8 +12,6 @@ import org.intellij.markdown.flavours.commonmark.CommonMarkFlavourDescriptor
 import org.intellij.markdown.parser.MarkdownParser
 import java.io.BufferedReader
 import java.io.InputStreamReader
-import java.time.Duration
-import java.time.Instant
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
@@ -104,9 +102,8 @@ class NoteRepository(private val context: Context) {
         parseNotes(files)
     }
 
-    suspend fun getNotesForDate(date: String): List<Note> = withContext(Dispatchers.IO) {
-        val dir = getRootDirectory() ?: return@withContext emptyList()
-        val file = dir.findFile("$date.md") ?: return@withContext emptyList()
+    suspend fun getNotesForDate(noteFile: NoteFile?): List<Note> = withContext(Dispatchers.IO) {
+        val file = noteFile?.file ?: return@withContext emptyList()
         parseFile(file)
     }
 
@@ -223,10 +220,9 @@ class NoteRepository(private val context: Context) {
         }
     }
 
-    suspend fun updateNote(date: String, index: Int, newContent: String) =
+    suspend fun updateNote(noteFile: NoteFile, index: Int, newContent: String) =
         withContext(Dispatchers.IO) {
-            val dir = getRootDirectory() ?: return@withContext
-            val file = dir.findFile("$date.md") ?: return@withContext
+            val file = noteFile.file
 
             val notes = parseFile(file).toMutableList()
             if (index in notes.indices) {
@@ -236,9 +232,8 @@ class NoteRepository(private val context: Context) {
             }
         }
 
-    suspend fun deleteNote(date: String, index: Int) = withContext(Dispatchers.IO) {
-        val dir = getRootDirectory() ?: return@withContext
-        val file = dir.findFile("$date.md") ?: return@withContext
+    suspend fun deleteNote(noteFile: NoteFile, index: Int) = withContext(Dispatchers.IO) {
+        val file = noteFile.file
 
         val notes = parseFile(file).toMutableList()
         if (index in notes.indices) {

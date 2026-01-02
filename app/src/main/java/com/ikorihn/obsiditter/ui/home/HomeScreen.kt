@@ -1,5 +1,6 @@
 package com.ikorihn.obsiditter.ui.home
 
+import android.R
 import android.content.Context
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -120,8 +121,13 @@ class HomeViewModel(private val repository: NoteRepository) : ViewModel() {
     }
 
     suspend fun findNoteIndex(note: Note): Int {
-        val dailyNotes = repository.getNotesForDate(note.date)
+        val noteFile = findNoteFile(note.date)
+        val dailyNotes = repository.getNotesForDate(noteFile)
         return dailyNotes.indexOfFirst { it.time == note.time && it.content == note.content }
+    }
+
+    fun findNoteFile(date: String): NoteFile? {
+        return allFiles.find { it.name == "${date}.md"}
     }
 
     fun addNote(content: String, tags: String) {
@@ -139,7 +145,7 @@ class HomeViewModel(private val repository: NoteRepository) : ViewModel() {
                 content
             }
 
-            val noteFile = allFiles.find { it.name == "${date}.md"}
+            val noteFile = findNoteFile(date)
             repository.addNote(Note(date, time, fullContent), noteFile)
             loadNotes()
         }
@@ -149,9 +155,10 @@ class HomeViewModel(private val repository: NoteRepository) : ViewModel() {
         if (!repository.isStorageConfigured()) return
 
         viewModelScope.launch {
+            val noteFile = findNoteFile(note.date)
             val index = findNoteIndex(note)
-            if (index != -1) {
-                repository.deleteNote(note.date, index)
+            if (noteFile != null && index != -1) {
+                repository.deleteNote(noteFile, index)
                 loadNotes()
             }
         }
