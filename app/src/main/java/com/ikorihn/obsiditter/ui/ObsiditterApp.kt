@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Nightlight
@@ -27,6 +28,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.ikorihn.obsiditter.data.Prefs
+import com.ikorihn.obsiditter.ui.categorytracker.CategoryTrackerScreen
 import com.ikorihn.obsiditter.ui.exercisetracker.ExerciseTrackerScreen
 import com.ikorihn.obsiditter.ui.home.HomeScreen
 import com.ikorihn.obsiditter.ui.mealtracker.MealTrackerScreen
@@ -92,6 +94,16 @@ fun ObsiditterApp() {
                     modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
                 )
                 NavigationDrawerItem(
+                    label = { Text("Collections") },
+                    icon = { Icon(Icons.Default.Book, null) },
+                    selected = false,
+                    onClick = {
+                        scope.launch { drawerState.close() }
+                        navController.navigate("category_tracker")
+                    },
+                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                )
+                NavigationDrawerItem(
                     label = { Text("Settings") },
                     icon = { Icon(Icons.Default.Settings, null) },
                     selected = false,
@@ -132,6 +144,11 @@ fun ObsiditterApp() {
             }
             composable("exercise_tracker") {
                 ExerciseTrackerScreen(
+                    onMenu = { scope.launch { drawerState.open() } }
+                )
+            }
+            composable("category_tracker") {
+                CategoryTrackerScreen(
                     onMenu = { scope.launch { drawerState.open() } }
                 )
             }

@@ -403,6 +403,78 @@ class NoteRepository(private val context: Context) {
         }
     }
 
+    enum class Category(val folderName: String, val displayName: String) {
+        Movies("movies", "Movies"),
+        Reading("books", "Reading"),
+        Manga("comics", "Manga"),
+        Live("events", "Live"),
+        Video("videos", "Video Works"),
+        Radio("podcasts", "Radio/Podcast"),
+        YouTube("youtube", "YouTube")
+    }
+
+    data class CategoryRecord(
+        val category: Category,
+        val file: NoteFile,
+        val title: String,
+        val date: String,
+        val content: String
+    )
+
+    private fun getOrCreateDirectory(category: Category): DocumentFile? {
+        val customUri = prefs.getCategoryUri(category)
+        if (customUri != null) {
+            return try {
+                DocumentFile.fromTreeUri(context, customUri)
+            } catch (e: Exception) {
+                null
+            }
+        }
+
+        val root = getRootDirectory() ?: return null
+        val existing = root.findFile(category.folderName)
+        if (existing != null && existing.isDirectory) return existing
+        return root.createDirectory(category.folderName)
+    }
+
+    suspend fun getCategoryRecords(category: Category): List<CategoryRecord> =
+        withContext(Dispatchers.IO) {
+            val dir = getOrCreateDirectory(category) ?: return@withContext emptyList()
+            val files = dir.listFiles().filter { it.name?.endsWith(".md") == true }
+
+            files.mapNotNull { file ->
+                val content = readText(file) ?: return@mapNotNull null
+                val frontmatter = parseFrontmatter(content)
+                val title = frontmatter?.get("title")?.toString() ?: file.name?.removeSuffix(".md")
+                ?: "Untitled"
+                val date = frontmatter?.get("date")?.toString() ?: ""
+                // Extract body content (remove frontmatter)
+                val body = content.replace(Regex("^---\\n[\\s\\S]*?\\n---"), "").trim()
+
+                CategoryRecord(category, NoteFile(file.name ?: "", file), title, date, body)
+            }.sortedByDescending { it.date }
+        }
+
+    suspend fun addCategoryRecord(category: Category, title: String, date: String, body: String) =
+        withContext(Dispatchers.IO) {
+            val dir = getOrCreateDirectory(category) ?: return@withContext
+            val filename = "${date}_${title.replace(Regex("[^a-zA-Z0-9\\-_]"), "_")}.md"
+            val file = dir.createFile("text/markdown", filename) ?: return@withContext
+
+            val frontmatterMap = mapOf(
+                "date" to date,
+                "category" to category.displayName,
+                "title" to title
+            )
+
+            val frontmatter = yamlMapper.writeValueAsString(frontmatterMap)
+                .removePrefix("---")
+                .trim()
+
+            val text = "---\n$frontmatter\n---\n\n$body"
+            writeText(file, text)
+        }
+
     private fun createFileContent(file: DocumentFile, date: String) {
         val now = LocalDateTime.now()
             .format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss")) + "+09:00"

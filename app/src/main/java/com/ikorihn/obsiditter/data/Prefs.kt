@@ -27,6 +27,17 @@ class Prefs(context: Context) {
             }
         }
 
+    fun getCategoryUri(category: NoteRepository.Category): Uri? {
+        val uriString = sharedPreferences.getString("category_uri_${category.folderName}", null)
+        return uriString?.let { Uri.parse(it) }
+    }
+
+    fun setCategoryUri(category: NoteRepository.Category, uri: Uri?) {
+        sharedPreferences.edit {
+            putString("category_uri_${category.folderName}", uri?.toString())
+        }
+    }
+
     companion object {
         const val defaultTemplate = """---
 date: "{{date}}"
