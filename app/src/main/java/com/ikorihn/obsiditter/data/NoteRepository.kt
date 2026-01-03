@@ -440,7 +440,7 @@ class NoteRepository(private val context: Context) {
     suspend fun getCategoryRecords(category: Category): List<CategoryRecord> =
         withContext(Dispatchers.IO) {
             val dir = getOrCreateDirectory(category) ?: return@withContext emptyList()
-            val files = dir.listFiles().filter { it.name?.endsWith(".md") == true }
+            val files = dir.listFiles()
 
             files.mapNotNull { file ->
                 val content = readText(file) ?: return@mapNotNull null
@@ -474,6 +474,33 @@ class NoteRepository(private val context: Context) {
             val text = "---\n$frontmatter\n---\n\n$body"
             writeText(file, text)
         }
+
+    suspend fun deleteCategoryRecord(record: CategoryRecord) = withContext(Dispatchers.IO) {
+        record.file.file.delete()
+    }
+
+    suspend fun updateCategoryRecord(
+        record: CategoryRecord,
+        title: String,
+        date: String,
+        body: String
+    ) = withContext(Dispatchers.IO) {
+        val frontmatterMap = mapOf(
+            "date" to date,
+            "category" to record.category.displayName,
+            "title" to title
+        )
+
+        val frontmatter = yamlMapper.writeValueAsString(frontmatterMap)
+            .removePrefix("---")
+            .trim()
+
+        val text = "---\n$frontmatter\n---\n\n$body"
+
+        // If date or title changed, the filename might need to change to stay consistent with addCategoryRecord logic,
+        // but for now let's just update the content of the existing file to avoid URI issues.
+        writeText(record.file.file, text)
+    }
 
     private fun createFileContent(file: DocumentFile, date: String) {
         val now = LocalDateTime.now()

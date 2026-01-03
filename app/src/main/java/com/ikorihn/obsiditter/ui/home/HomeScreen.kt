@@ -150,7 +150,7 @@ class HomeViewModel(private val repository: NoteRepository) : ViewModel() {
     suspend fun findNoteIndex(note: Note): Int {
         val file = allFiles.find { it.name == "${note.date}.md" }
         val dailyNotes = repository.getNotesForDate(file)
-        return dailyNotes.indexOfFirst { it.time == note.time && it.content == note.content }
+        return dailyNotes.indexOfFirst { it.datetime == note.datetime && it.content == note.content }
     }
 
     fun addNote(content: String, tags: String) {
@@ -158,7 +158,7 @@ class HomeViewModel(private val repository: NoteRepository) : ViewModel() {
         viewModelScope.launch {
             val now = LocalDateTime.now()
             val date = now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
-            val time = now.format(DateTimeFormatter.ofPattern("HH:mm"))
+            val time = now.format(DateTimeFormatter.ofPattern("HH:mm:ss"))
 
             val fullContent = if (tags.isNotBlank()) {
                 val tagString = tags.split(" ")
@@ -492,7 +492,7 @@ fun NoteItem(
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = "${note.date} ${note.time}",
+                    text = note.datetime.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.primary
                 )

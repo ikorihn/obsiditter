@@ -5,7 +5,7 @@ import java.time.format.DateTimeFormatter
 
 data class Note(
     val date: String, // yyyy-MM-dd
-    val time: String, // HH:mm
+    val time: String, // HH:mm:ss
     val content: String,
     val tags: List<String> = emptyList()
 
@@ -13,9 +13,10 @@ data class Note(
 
     val datetime: LocalDateTime
         get() {
+            val hhmmss = if (time.split(":").size == 3) time else "$time:00"
             return LocalDateTime.parse(
-                "$date $time",
-                DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+                "$date $hhmmss",
+                DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
             )
         }
 

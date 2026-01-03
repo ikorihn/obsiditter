@@ -7,11 +7,13 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -21,6 +23,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -82,6 +86,20 @@ class CategoryTrackerViewModel(private val repository: NoteRepository) : ViewMod
             loadRecords(category)
         }
     }
+
+    fun updateRecord(record: CategoryRecord, title: String, date: String, content: String) {
+        viewModelScope.launch {
+            repository.updateCategoryRecord(record, title, date, content)
+            loadRecords(record.category)
+        }
+    }
+
+    fun deleteRecord(record: CategoryRecord) {
+        viewModelScope.launch {
+            repository.deleteCategoryRecord(record)
+            loadRecords(record.category)
+        }
+    }
 }
 
 class CategoryTrackerViewModelFactory(private val context: Context) : ViewModelProvider.Factory {
@@ -100,6 +118,8 @@ fun CategoryTrackerScreen(
         viewModel(factory = CategoryTrackerViewModelFactory(context))
     var selectedCategory by remember { mutableStateOf<Category?>(null) }
     var showAddDialog by remember { mutableStateOf(false) }
+    var recordToEdit by remember { mutableStateOf<CategoryRecord?>(null) }
+    var recordToDelete by remember { mutableStateOf<CategoryRecord?>(null) }
 
     BackHandler(enabled = selectedCategory != null) {
         selectedCategory = null
@@ -112,6 +132,42 @@ fun CategoryTrackerScreen(
             onConfirm = { title, date, content ->
                 viewModel.addRecord(selectedCategory!!, title, date, content)
                 showAddDialog = false
+            }
+        )
+    }
+
+    if (recordToEdit != null) {
+        AddRecordDialog(
+            category = recordToEdit!!.category,
+            initialTitle = recordToEdit!!.title,
+            initialDate = recordToEdit!!.date,
+            initialContent = recordToEdit!!.content,
+            isEdit = true,
+            onDismiss = { recordToEdit = null },
+            onConfirm = { title, date, content ->
+                viewModel.updateRecord(recordToEdit!!, title, date, content)
+                recordToEdit = null
+            }
+        )
+    }
+
+    if (recordToDelete != null) {
+        AlertDialog(
+            onDismissRequest = { recordToDelete = null },
+            title = { Text("Delete Record") },
+            text = { Text("Are you sure you want to delete \"${recordToDelete!!.title}\"?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.deleteRecord(recordToDelete!!)
+                    recordToDelete = null
+                }) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { recordToDelete = null }) {
+                    Text("Cancel")
+                }
             }
         )
     }
@@ -166,7 +222,11 @@ fun CategoryTrackerScreen(
                 } else {
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
                         items(viewModel.records) { record ->
-                            RecordItem(record)
+                            RecordItem(
+                                record = record,
+                                onEdit = { recordToEdit = record },
+                                onDelete = { recordToDelete = record }
+                            )
                             HorizontalDivider()
                         }
                     }
@@ -200,10 +260,32 @@ fun CategoryGrid(onCategorySelected: (Category) -> Unit) {
 }
 
 @Composable
-fun RecordItem(record: CategoryRecord) {
+fun RecordItem(
+    record: CategoryRecord,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
+) {
     Column(modifier = Modifier.padding(16.dp)) {
-        Text(text = record.title, style = MaterialTheme.typography.titleMedium)
-        Text(text = record.date, style = MaterialTheme.typography.labelMedium)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = record.title, style = MaterialTheme.typography.titleMedium)
+                Text(text = record.date, style = MaterialTheme.typography.labelMedium)
+            }
+            IconButton(onClick = onEdit) {
+                Icon(
+                    Icons.Default.Edit,
+                    contentDescription = "Edit",
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            IconButton(onClick = onDelete) {
+                Icon(
+                    Icons.Default.Delete,
+                    contentDescription = "Delete",
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
         if (record.content.isNotBlank()) {
             Spacer(Modifier.height(4.dp))
             Text(text = record.content, style = MaterialTheme.typography.bodyMedium, maxLines = 3)
@@ -214,20 +296,24 @@ fun RecordItem(record: CategoryRecord) {
 @Composable
 fun AddRecordDialog(
     category: Category,
+    initialTitle: String = "",
+    initialDate: String = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd")),
+    initialContent: String = "",
+    isEdit: Boolean = false,
     onDismiss: () -> Unit,
     onConfirm: (String, String, String) -> Unit
 ) {
-    var title by remember { mutableStateOf("") }
-    var date by remember {
-        mutableStateOf(
-            LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
-        )
-    }
-    var content by remember { mutableStateOf("") }
+    var title by remember { mutableStateOf(initialTitle) }
+    var date by remember { mutableStateOf(initialDate) }
+    var content by remember { mutableStateOf(initialContent) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Add ${category.displayName}") },
+        title = {
+            Text(
+                if (isEdit) "Edit ${category.displayName}" else "Add ${category.displayName}"
+            )
+        },
         text = {
             Column {
                 OutlinedTextField(
@@ -263,7 +349,7 @@ fun AddRecordDialog(
                 },
                 enabled = title.isNotBlank() && date.isNotBlank()
             ) {
-                Text("Add")
+                Text(if (isEdit) "Save" else "Add")
             }
         },
         dismissButton = {
