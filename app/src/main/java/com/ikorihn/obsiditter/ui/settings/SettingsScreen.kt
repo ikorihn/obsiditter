@@ -55,7 +55,7 @@ fun SettingsScreen(
             currentUri = uri
         }
     }
-    
+
     LaunchedEffect(noteTemplate) {
         prefs.noteTemplate = noteTemplate
     }

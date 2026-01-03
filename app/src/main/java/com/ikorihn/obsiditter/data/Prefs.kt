@@ -30,16 +30,17 @@ class Prefs(context: Context) {
     companion object {
         const val defaultTemplate = """---
 date: "{{date}}"
-tags: 
-    - 'daily'
-fileClass: DailyLog
-mood_morning:
-wake_time:
-mood_evening:
-sleep_time:
-snacks:
-reading_min:
-exercise_min:
+tags:
+- "daily"
+fileClass: "DailyLog"
+sleep_time: null
+wake_time: null
+morning: []
+lunch: []
+dinner: []
+snacks: []
+reading_min: 0
+exercise_min: 0
 ---
 
 ## Memo

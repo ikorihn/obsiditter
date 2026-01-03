@@ -21,8 +21,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Nightlight
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -237,7 +237,8 @@ fun HomeScreen(
     }
 
     if (showTimePicker != null) {
-        val initialTime = if (showTimePicker == "wake_time") viewModel.wakeTime else viewModel.sleepTime
+        val initialTime =
+            if (showTimePicker == "wake_time") viewModel.wakeTime else viewModel.sleepTime
         val calendar = Calendar.getInstance()
         if (!initialTime.isNullOrBlank()) {
             try {
@@ -248,7 +249,7 @@ fun HomeScreen(
                 // Ignore invalid format
             }
         }
-        
+
         val timePickerState = rememberTimePickerState(
             initialHour = calendar.get(Calendar.HOUR_OF_DAY),
             initialMinute = calendar.get(Calendar.MINUTE)
@@ -258,7 +259,8 @@ fun HomeScreen(
             onDismissRequest = { showTimePicker = null },
             confirmButton = {
                 TextButton(onClick = {
-                    val time = String.format("%02d:%02d", timePickerState.hour, timePickerState.minute)
+                    val time =
+                        String.format("%02d:%02d", timePickerState.hour, timePickerState.minute)
                     viewModel.updateTime(showTimePicker!!, time)
                     showTimePicker = null
                 }) {
@@ -283,9 +285,12 @@ fun HomeScreen(
                     modifier = Modifier.statusBarsPadding(),
                     title = { Text("Obsiditter") },
                     navigationIcon = {
-                         IconButton(onClick = onMenu) {
-                             Icon(Icons.Default.Settings, contentDescription = "Menu") // Temporarily using Settings icon as Menu, will fix in ObsiditterApp context or use Menu icon
-                         }
+                        IconButton(onClick = onMenu) {
+                            Icon(
+                                Icons.Default.Settings,
+                                contentDescription = "Menu"
+                            ) // Temporarily using Settings icon as Menu, will fix in ObsiditterApp context or use Menu icon
+                        }
                     },
                     actions = {
                         // Settings moved to Drawer? Or keep here? User said "Add menu from sidebar". 

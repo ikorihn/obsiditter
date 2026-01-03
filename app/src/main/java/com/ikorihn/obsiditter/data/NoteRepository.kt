@@ -277,7 +277,7 @@ class NoteRepository(private val context: Context) {
             return@withContext frontmatter?.get(key)?.toString()?.trim()
         }
 
-    suspend fun updateFrontmatterValue(noteFile: NoteFile, key: String, value: String) =
+    suspend fun updateFrontmatterValue(noteFile: NoteFile, key: String, value: Any) =
         withContext(Dispatchers.IO) {
             val content = readText(noteFile.file) ?: return@withContext
 
@@ -287,21 +287,23 @@ class NoteRepository(private val context: Context) {
             val updatedMap: MutableMap<String, Any> = if (match != null) {
                 val yamlContent = match.groupValues[1]
                 try {
-                    yamlMapper.readValue(yamlContent, object : TypeReference<MutableMap<String, Any>>() {})
+                    yamlMapper.readValue(
+                        yamlContent,
+                        object : TypeReference<MutableMap<String, Any>>() {})
                 } catch (e: Exception) {
                     mutableMapOf()
                 }
             } else {
                 mutableMapOf()
             }
-            
+
             updatedMap[key] = value
-            
+
             val newYamlBody = yamlMapper.writeValueAsString(updatedMap)
                 .removePrefix("---")
                 .trim()
             val newFrontmatter = "---\n$newYamlBody\n---"
-            
+
             val newContent = if (match != null) {
                 content.replace(match.value, newFrontmatter)
             } else {
@@ -332,6 +334,41 @@ class NoteRepository(private val context: Context) {
                 date = date,
                 wakeTime = if (wakeTime.isNullOrBlank()) null else wakeTime,
                 sleepTime = if (sleepTime.isNullOrBlank()) null else sleepTime,
+                file = noteFile
+            )
+        }
+    }
+
+    data class MealLog(
+        val date: String,
+        val morning: List<String>,
+        val lunch: List<String>,
+        val dinner: List<String>,
+        val snacks: List<String>,
+        val file: NoteFile
+    )
+
+    suspend fun getMealLogs(): List<MealLog> = withContext(Dispatchers.IO) {
+        val files = getSortedNoteFiles()
+        return@withContext files.map { noteFile ->
+            val date = noteFile.name.removeSuffix(".md")
+            val content = readText(noteFile.file) ?: ""
+            val frontmatter = parseFrontmatter(content)
+
+            fun parseList(key: String): List<String> {
+                val value = frontmatter?.get(key) ?: return emptyList()
+                return when (value) {
+                    is List<*> -> value.map { it.toString() }
+                    else -> listOf(value.toString())
+                }
+            }
+
+            MealLog(
+                date = date,
+                morning = parseList("morning"),
+                lunch = parseList("lunch"),
+                dinner = parseList("dinner"),
+                snacks = parseList("snacks"),
                 file = noteFile
             )
         }

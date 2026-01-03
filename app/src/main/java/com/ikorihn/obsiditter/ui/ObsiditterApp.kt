@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Nightlight
+import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.Icon
@@ -26,6 +27,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.ikorihn.obsiditter.data.Prefs
 import com.ikorihn.obsiditter.ui.home.HomeScreen
+import com.ikorihn.obsiditter.ui.mealtracker.MealTrackerScreen
 import com.ikorihn.obsiditter.ui.settings.SettingsScreen
 import com.ikorihn.obsiditter.ui.sleeptracker.SleepTrackerScreen
 import kotlinx.coroutines.launch
@@ -37,7 +39,7 @@ fun ObsiditterApp() {
     val prefs = remember { Prefs(context) }
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
-    
+
     val startDestination = if (prefs.storageUri == null) "settings" else "home"
 
     ModalNavigationDrawer(
@@ -68,6 +70,16 @@ fun ObsiditterApp() {
                     modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
                 )
                 NavigationDrawerItem(
+                    label = { Text("Meal Tracker") },
+                    icon = { Icon(Icons.Default.Restaurant, null) },
+                    selected = false,
+                    onClick = {
+                        scope.launch { drawerState.close() }
+                        navController.navigate("meal_tracker")
+                    },
+                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                )
+                NavigationDrawerItem(
                     label = { Text("Settings") },
                     icon = { Icon(Icons.Default.Settings, null) },
                     selected = false,
@@ -89,7 +101,7 @@ fun ObsiditterApp() {
             }
             composable("settings") {
                 SettingsScreen(
-                    onNavigateBack = { 
+                    onNavigateBack = {
                         navController.navigate("home") {
                             popUpTo("settings") { inclusive = true }
                         }
@@ -98,6 +110,11 @@ fun ObsiditterApp() {
             }
             composable("sleep_tracker") {
                 SleepTrackerScreen(
+                    onMenu = { scope.launch { drawerState.open() } }
+                )
+            }
+            composable("meal_tracker") {
+                MealTrackerScreen(
                     onMenu = { scope.launch { drawerState.open() } }
                 )
             }

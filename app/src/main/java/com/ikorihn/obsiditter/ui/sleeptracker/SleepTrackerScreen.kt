@@ -44,7 +44,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.ikorihn.obsiditter.data.NoteFile
 import com.ikorihn.obsiditter.data.NoteRepository
 import com.ikorihn.obsiditter.data.NoteRepository.DailyLog
 import kotlinx.coroutines.launch
@@ -90,14 +89,15 @@ fun SleepTrackerScreen(
     onMenu: () -> Unit
 ) {
     val context = LocalContext.current
-    val viewModel: SleepTrackerViewModel = viewModel(factory = SleepTrackerViewModelFactory(context))
+    val viewModel: SleepTrackerViewModel =
+        viewModel(factory = SleepTrackerViewModelFactory(context))
 
     LaunchedEffect(Unit) {
         viewModel.loadLogs()
     }
 
     // State for TimePicker Dialog
-    var showTimePicker by remember { mutableStateOf<Triple<DailyLog, String, String?>?>(null) } 
+    var showTimePicker by remember { mutableStateOf<Triple<DailyLog, String, String?>?>(null) }
     // Triple: (Log, Key ("wake_time" or "sleep_time"), CurrentValue)
 
     if (showTimePicker != null) {
@@ -122,7 +122,8 @@ fun SleepTrackerScreen(
             onDismissRequest = { showTimePicker = null },
             confirmButton = {
                 TextButton(onClick = {
-                    val time = String.format("%02d:%02d", timePickerState.hour, timePickerState.minute)
+                    val time =
+                        String.format("%02d:%02d", timePickerState.hour, timePickerState.minute)
                     viewModel.updateTime(log, key, time)
                     showTimePicker = null
                 }) {
@@ -153,7 +154,9 @@ fun SleepTrackerScreen(
             )
         }
     ) { paddingValues ->
-        Box(modifier = Modifier.padding(paddingValues).fillMaxSize()) {
+        Box(modifier = Modifier
+            .padding(paddingValues)
+            .fillMaxSize()) {
             if (viewModel.isLoading) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator()
@@ -169,11 +172,15 @@ fun SleepTrackerScreen(
                             headlineContent = { Text(log.date) },
                             supportingContent = {
                                 Row(
-                                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 8.dp),
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     OutlinedButton(
-                                        onClick = { showTimePicker = Triple(log, "wake_time", log.wakeTime) },
+                                        onClick = {
+                                            showTimePicker = Triple(log, "wake_time", log.wakeTime)
+                                        },
                                         modifier = Modifier.weight(1f)
                                     ) {
                                         Icon(Icons.Filled.WbSunny, contentDescription = "Wake")
@@ -181,7 +188,10 @@ fun SleepTrackerScreen(
                                         Text(log.wakeTime ?: "--:--")
                                     }
                                     OutlinedButton(
-                                        onClick = { showTimePicker = Triple(log, "sleep_time", log.sleepTime) },
+                                        onClick = {
+                                            showTimePicker =
+                                                Triple(log, "sleep_time", log.sleepTime)
+                                        },
                                         modifier = Modifier.weight(1f)
                                     ) {
                                         Icon(Icons.Filled.Nightlight, contentDescription = "Sleep")
