@@ -2,9 +2,9 @@ package com.ikorihn.obsiditter.data
 
 import android.content.Context
 import android.provider.DocumentsContract
-import android.util.Log
 import androidx.documentfile.provider.DocumentFile
 import com.ikorihn.obsiditter.model.Note
+import com.ikorihn.obsiditter.model.notesToEntry
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.intellij.markdown.ast.getTextInNode
@@ -201,15 +201,7 @@ class NoteRepository(private val context: Context) {
             }
         }
 
-        val noteEntry = buildString {
-            append("- ")
-            append(note.time)
-            if (note.content.isNotBlank()) {
-                append("\n    ")
-                append(note.content.replace("\n", "\n    "))
-            }
-            append("\n")
-        }
+        val noteEntry = note.toEntry()
 
         if (!foundJournal) {
             val toAppend = "\n\n## Journal\n$noteEntry"
@@ -273,7 +265,7 @@ exercise_min:
         val flavour = CommonMarkFlavourDescriptor()
         val parsedTree = MarkdownParser(flavour).buildMarkdownTreeFromString(content)
 
-        var journalStartOffset = -1
+        var journalStartOffset = 0
         var journalEndOffset = -1
         var foundJournal = false
 
@@ -283,53 +275,27 @@ exercise_min:
                 if (text.endsWith("Journal")) {
                     foundJournal = true
                     journalStartOffset = node.startOffset
-                    journalEndOffset = node.endOffset
                     continue
                 } else if (foundJournal) {
                     journalEndOffset = node.startOffset
                     break
                 }
             }
-            if (foundJournal) {
-                journalEndOffset = node.endOffset
+        }
+
+        val note = buildString {
+            append(content.take(journalStartOffset))
+            append("## Journal\n")
+            append(notesToEntry(notes))
+
+            if (-1 < journalEndOffset && journalEndOffset < content.length) {
+                val rest = content.substring(journalEndOffset)
+                if (rest.isNotBlank() && !rest.startsWith("\n")) append("\n")
+                append(rest)
             }
         }
 
-        if (!foundJournal) {
-            val sb = StringBuilder(content)
-            sb.append("\n\n## Journal\n")
-            for (note in notes) {
-                appendNoteToStringBuilder(sb, note)
-            }
-            writeText(file, sb.toString())
-            return
-        }
-
-        val sb = StringBuilder()
-        sb.append(content.substring(0, journalStartOffset))
-        sb.append("## Journal\n")
-
-        for (note in notes) {
-            appendNoteToStringBuilder(sb, note)
-        }
-
-        if (journalEndOffset < content.length) {
-            val rest = content.substring(journalEndOffset)
-            if (rest.isNotBlank() && !rest.startsWith("\n")) sb.append("\n")
-            sb.append(rest)
-        }
-
-        writeText(file, sb.toString())
-    }
-
-    private fun appendNoteToStringBuilder(sb: StringBuilder, note: Note) {
-        sb.append("- ")
-        sb.append(note.time)
-        if (note.content.isNotBlank()) {
-            sb.append("\n    ")
-            sb.append(note.content.replace("\n", "\n    "))
-        }
-        sb.append("\n")
+        writeText(file, note)
     }
 
     private fun readText(file: DocumentFile): String? {
@@ -345,7 +311,7 @@ exercise_min:
 
     private fun writeText(file: DocumentFile, text: String) {
         try {
-            context.contentResolver.openOutputStream(file.uri, "w")?.use {
+            context.contentResolver.openOutputStream(file.uri, "wt")?.use {
                 it.write(text.toByteArray())
             }
         } catch (e: Exception) {

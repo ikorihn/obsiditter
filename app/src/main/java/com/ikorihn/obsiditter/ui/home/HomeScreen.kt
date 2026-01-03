@@ -1,6 +1,5 @@
 package com.ikorihn.obsiditter.ui.home
 
-import android.R
 import android.content.Context
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,12 +8,12 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
@@ -121,13 +120,9 @@ class HomeViewModel(private val repository: NoteRepository) : ViewModel() {
     }
 
     suspend fun findNoteIndex(note: Note): Int {
-        val noteFile = findNoteFile(note.date)
-        val dailyNotes = repository.getNotesForDate(noteFile)
+        val file = allFiles.find { it.name == "${note.date}.md" }
+        val dailyNotes = repository.getNotesForDate(file)
         return dailyNotes.indexOfFirst { it.time == note.time && it.content == note.content }
-    }
-
-    fun findNoteFile(date: String): NoteFile? {
-        return allFiles.find { it.name == "${date}.md"}
     }
 
     fun addNote(content: String, tags: String) {
@@ -145,7 +140,7 @@ class HomeViewModel(private val repository: NoteRepository) : ViewModel() {
                 content
             }
 
-            val noteFile = findNoteFile(date)
+            val noteFile = allFiles.find { it.name == "${date}.md" }
             repository.addNote(Note(date, time, fullContent), noteFile)
             loadNotes()
         }
@@ -155,10 +150,26 @@ class HomeViewModel(private val repository: NoteRepository) : ViewModel() {
         if (!repository.isStorageConfigured()) return
 
         viewModelScope.launch {
-            val noteFile = findNoteFile(note.date)
+            val file = allFiles.find { it.name == "${note.date}.md" }
+            if (file == null) return@launch
+
             val index = findNoteIndex(note)
-            if (noteFile != null && index != -1) {
-                repository.deleteNote(noteFile, index)
+            if (index != -1) {
+                repository.deleteNote(file, index)
+                loadNotes()
+            }
+        }
+    }
+
+    fun updateNote(note: Note, newContent: String) {
+        if (!repository.isStorageConfigured()) return
+        viewModelScope.launch {
+            val file = allFiles.find { it.name == "${note.date}.md" }
+            if (file == null) return@launch
+
+            val index = findNoteIndex(note)
+            if (index != -1) {
+                repository.updateNote(file, index, newContent)
                 loadNotes()
             }
         }
@@ -179,12 +190,12 @@ class HomeViewModelFactory(private val context: Context) :
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
-    onEditNote: (String, Int) -> Unit,
     onSettings: () -> Unit
 ) {
     val context = LocalContext.current
     val viewModel: HomeViewModel = viewModel(factory = HomeViewModelFactory(context))
     var showDeleteDialog by remember { mutableStateOf<Note?>(null) }
+    var noteToEdit by remember { mutableStateOf<Note?>(null) }
     val scope = rememberCoroutineScope()
 
     var inputContent by remember { mutableStateOf("") }
@@ -278,14 +289,7 @@ fun HomeScreen(
 
                         NoteItem(
                             note = note,
-                            onEdit = {
-                                scope.launch {
-                                    val idx = viewModel.findNoteIndex(note)
-                                    if (idx != -1) {
-                                        onEditNote(note.date, idx)
-                                    }
-                                }
-                            },
+                            onEdit = { noteToEdit = note },
                             onDelete = { showDeleteDialog = note }
                         )
                     }
@@ -327,6 +331,51 @@ fun HomeScreen(
             }
         )
     }
+
+    if (noteToEdit != null) {
+        EditNoteDialog(
+            note = noteToEdit!!,
+            onDismiss = { noteToEdit = null },
+            onConfirm = { newContent ->
+                viewModel.updateNote(noteToEdit!!, newContent)
+                noteToEdit = null
+            }
+        )
+    }
+}
+
+@Composable
+fun EditNoteDialog(
+    note: Note,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var content by remember { mutableStateOf(note.content) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Edit Memo") },
+        text = {
+            OutlinedTextField(
+                value = content,
+                onValueChange = { content = it },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(300.dp),
+                label = { Text("Content") }
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(content) }) {
+                Text("Save")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
 }
 
 @Composable

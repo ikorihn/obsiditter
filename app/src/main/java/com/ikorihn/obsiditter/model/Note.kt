@@ -19,4 +19,19 @@ data class Note(
             )
         }
 
+    fun toEntry(): String {
+        return buildString {
+            append("- $time")
+            if (content.isNotBlank()) {
+                append(" ")
+                append(content.replace("\n", "\n    "))
+            }
+        }
+    }
+
+}
+
+fun notesToEntry(notes: List<Note>): String {
+    return notes.sortedBy { it.datetime }
+        .joinToString("\n") { it.toEntry() }
 }
