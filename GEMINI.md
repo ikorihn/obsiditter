@@ -1,0 +1,1 @@
+- SAF の DocumentFile.findFile は遅いため、使用しない方法で実装する

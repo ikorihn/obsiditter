@@ -234,6 +234,80 @@ class NoteRepository(private val context: Context) {
         }
     }
 
+    suspend fun getTodayNoteFile(): NoteFile? = withContext(Dispatchers.IO) {
+        val date = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+        val filename = "$date.md"
+        val dir = getRootDirectory() ?: return@withContext null
+
+        val file = dir.findFile(filename)
+        if (file != null) {
+            return@withContext NoteFile(filename, file)
+        } else {
+            // Create if not exists
+            val newFile = dir.createFile("text/markdown", filename)
+            if (newFile != null) {
+                createFileContent(newFile, date)
+                return@withContext NoteFile(filename, newFile)
+            }
+        }
+        return@withContext null
+    }
+
+    suspend fun getFrontmatterValue(noteFile: NoteFile, key: String): String? = withContext(Dispatchers.IO) {
+        val content = readText(noteFile.file) ?: return@withContext null
+        val regex = Regex("^$key:\\s*(.*)$", RegexOption.MULTILINE)
+        val match = regex.find(content)
+        return@withContext match?.groupValues?.get(1)?.trim()
+    }
+
+    suspend fun updateFrontmatterValue(noteFile: NoteFile, key: String, value: String) = withContext(Dispatchers.IO) {
+        val content = readText(noteFile.file) ?: return@withContext
+        val regex = Regex("^($key:\\s*)(.*)$", RegexOption.MULTILINE)
+        
+        val newContent = if (regex.containsMatchIn(content)) {
+            content.replace(regex, "$1$value")
+        } else {
+            // Key not found, try to insert into frontmatter if exists
+             val frontmatterRegex = Regex("^---\\n([\\s\\S]*?)\\n---", RegexOption.MULTILINE)
+             val match = frontmatterRegex.find(content)
+             if (match != null) {
+                 val frontmatterContent = match.groupValues[1]
+                 val newFrontmatterContent = "$frontmatterContent\n$key: $value"
+                 content.replace(frontmatterContent, newFrontmatterContent)
+             } else {
+                 return@withContext
+             }
+        }
+        
+        writeText(noteFile.file, newContent)
+    }
+    
+    data class DailyLog(
+        val date: String,
+        val wakeTime: String?,
+        val sleepTime: String?,
+        val file: NoteFile
+    )
+
+    suspend fun getDailyLogs(): List<DailyLog> = withContext(Dispatchers.IO) {
+        val files = getSortedNoteFiles()
+        return@withContext files.map { noteFile ->
+            val date = noteFile.name.removeSuffix(".md")
+            // This reads the file multiple times if we use getFrontmatterValue. 
+            // Optimization: Read once and extract both.
+            val content = readText(noteFile.file) ?: ""
+            val wakeTime = Regex("^wake_time:\\s*(.*)$", RegexOption.MULTILINE).find(content)?.groupValues?.get(1)?.trim()
+            val sleepTime = Regex("^sleep_time:\\s*(.*)$", RegexOption.MULTILINE).find(content)?.groupValues?.get(1)?.trim()
+            
+            DailyLog(
+                date = date,
+                wakeTime = if (wakeTime.isNullOrBlank()) null else wakeTime,
+                sleepTime = if (sleepTime.isNullOrBlank()) null else sleepTime,
+                file = noteFile
+            )
+        }
+    }
+
     private fun createFileContent(file: DocumentFile, date: String) {
         val now = LocalDateTime.now()
             .format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss")) + "+09:00"

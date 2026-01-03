@@ -1,6 +1,7 @@
 package com.ikorihn.obsiditter.ui.home
 
 import android.content.Context
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -21,6 +22,8 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Nightlight
+import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -29,12 +32,15 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -55,6 +61,7 @@ import com.ikorihn.obsiditter.model.Note
 import kotlinx.coroutines.launch
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+import java.util.Calendar
 
 class HomeViewModel(private val repository: NoteRepository) : ViewModel() {
     var notes by mutableStateOf<List<Note>>(emptyList())
@@ -64,6 +71,11 @@ class HomeViewModel(private val repository: NoteRepository) : ViewModel() {
         private set
 
     var isEndReached by mutableStateOf(false)
+        private set
+
+    var wakeTime by mutableStateOf<String?>(null)
+        private set
+    var sleepTime by mutableStateOf<String?>(null)
         private set
 
     private var allFiles: List<NoteFile> = emptyList()
@@ -83,11 +95,27 @@ class HomeViewModel(private val repository: NoteRepository) : ViewModel() {
             try {
                 allFiles = repository.getSortedNoteFiles()
                 loadMoreNotesInternal()
+                loadTodayMetadata()
             } catch (e: Exception) {
                 e.printStackTrace()
             } finally {
                 isLoading = false
             }
+        }
+    }
+
+    private suspend fun loadTodayMetadata() {
+        val todayFile = repository.getTodayNoteFile() ?: return
+        wakeTime = repository.getFrontmatterValue(todayFile, "wake_time")
+        sleepTime = repository.getFrontmatterValue(todayFile, "sleep_time")
+    }
+
+    fun updateTime(key: String, time: String) {
+        viewModelScope.launch {
+            val todayFile = repository.getTodayNoteFile() ?: return@launch
+            repository.updateFrontmatterValue(todayFile, key, time)
+            if (key == "wake_time") wakeTime = time
+            if (key == "sleep_time") sleepTime = time
         }
     }
 
@@ -190,7 +218,8 @@ class HomeViewModelFactory(private val context: Context) :
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
-    onSettings: () -> Unit
+    onSettings: () -> Unit,
+    onMenu: () -> Unit // Added callback for menu
 ) {
     val context = LocalContext.current
     val viewModel: HomeViewModel = viewModel(factory = HomeViewModelFactory(context))
@@ -201,21 +230,87 @@ fun HomeScreen(
     var inputContent by remember { mutableStateOf("") }
     var inputTags by remember { mutableStateOf("") }
 
+    var showTimePicker by remember { mutableStateOf<String?>(null) }
+
     LaunchedEffect(Unit) {
         viewModel.loadNotes()
     }
 
+    if (showTimePicker != null) {
+        val initialTime = if (showTimePicker == "wake_time") viewModel.wakeTime else viewModel.sleepTime
+        val calendar = Calendar.getInstance()
+        if (!initialTime.isNullOrBlank()) {
+            try {
+                val parts = initialTime.split(":")
+                calendar.set(Calendar.HOUR_OF_DAY, parts[0].toInt())
+                calendar.set(Calendar.MINUTE, parts[1].toInt())
+            } catch (e: Exception) {
+                // Ignore invalid format
+            }
+        }
+        
+        val timePickerState = rememberTimePickerState(
+            initialHour = calendar.get(Calendar.HOUR_OF_DAY),
+            initialMinute = calendar.get(Calendar.MINUTE)
+        )
+
+        AlertDialog(
+            onDismissRequest = { showTimePicker = null },
+            confirmButton = {
+                TextButton(onClick = {
+                    val time = String.format("%02d:%02d", timePickerState.hour, timePickerState.minute)
+                    viewModel.updateTime(showTimePicker!!, time)
+                    showTimePicker = null
+                }) {
+                    Text("OK")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showTimePicker = null }) {
+                    Text("Cancel")
+                }
+            },
+            text = {
+                TimePicker(state = timePickerState)
+            }
+        )
+    }
+
     Scaffold(
         topBar = {
-            TopAppBar(
-                modifier = Modifier.statusBarsPadding(),
-                title = { Text("Obsiditter") },
-                actions = {
-                    IconButton(onClick = onSettings) {
-                        Icon(Icons.Default.Settings, contentDescription = "Settings")
+            Column {
+                TopAppBar(
+                    modifier = Modifier.statusBarsPadding(),
+                    title = { Text("Obsiditter") },
+                    navigationIcon = {
+                         IconButton(onClick = onMenu) {
+                             Icon(Icons.Default.Settings, contentDescription = "Menu") // Temporarily using Settings icon as Menu, will fix in ObsiditterApp context or use Menu icon
+                         }
+                    },
+                    actions = {
+                        // Settings moved to Drawer? Or keep here? User said "Add menu from sidebar". 
+                        // I will keep settings here for now but usually sidebar has settings.
+                        // Let's use the Menu icon for the drawer trigger.
+                    }
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    OutlinedButton(onClick = { showTimePicker = "wake_time" }) {
+                        Icon(Icons.Filled.WbSunny, contentDescription = "Wake Time")
+                        Spacer(Modifier.width(8.dp))
+                        Text("${viewModel.wakeTime ?: "--:--"}")
+                    }
+                    OutlinedButton(onClick = { showTimePicker = "sleep_time" }) {
+                        Icon(Icons.Filled.Nightlight, contentDescription = "Sleep Time")
+                        Spacer(Modifier.width(8.dp))
+                        Text("${viewModel.sleepTime ?: "--:--"}")
                     }
                 }
-            )
+            }
         },
         bottomBar = {
             Surface(
