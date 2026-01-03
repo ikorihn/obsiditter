@@ -374,6 +374,35 @@ class NoteRepository(private val context: Context) {
         }
     }
 
+    data class ExerciseLog(
+        val date: String,
+        val exercise: List<String>,
+        val file: NoteFile
+    )
+
+    suspend fun getExerciseLogs(): List<ExerciseLog> = withContext(Dispatchers.IO) {
+        val files = getSortedNoteFiles()
+        return@withContext files.map { noteFile ->
+            val date = noteFile.name.removeSuffix(".md")
+            val content = readText(noteFile.file) ?: ""
+            val frontmatter = parseFrontmatter(content)
+
+            fun parseList(key: String): List<String> {
+                val value = frontmatter?.get(key) ?: return emptyList()
+                return when (value) {
+                    is List<*> -> value.map { it.toString() }
+                    else -> listOf(value.toString())
+                }
+            }
+
+            ExerciseLog(
+                date = date,
+                exercise = parseList("exercise"),
+                file = noteFile
+            )
+        }
+    }
+
     private fun createFileContent(file: DocumentFile, date: String) {
         val now = LocalDateTime.now()
             .format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss")) + "+09:00"

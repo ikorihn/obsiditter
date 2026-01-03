@@ -1,10 +1,8 @@
-package com.ikorihn.obsiditter.ui.mealtracker
+package com.ikorihn.obsiditter.ui.exercisetracker
 
 import android.content.Context
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,6 +12,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -43,11 +42,11 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ikorihn.obsiditter.data.NoteRepository
-import com.ikorihn.obsiditter.data.NoteRepository.MealLog
+import com.ikorihn.obsiditter.data.NoteRepository.ExerciseLog
 import kotlinx.coroutines.launch
 
-class MealTrackerViewModel(private val repository: NoteRepository) : ViewModel() {
-    var logs by mutableStateOf<List<MealLog>>(emptyList())
+class ExerciseTrackerViewModel(private val repository: NoteRepository) : ViewModel() {
+    var logs by mutableStateOf<List<ExerciseLog>>(emptyList())
         private set
     var isLoading by mutableStateOf(false)
         private set
@@ -57,7 +56,7 @@ class MealTrackerViewModel(private val repository: NoteRepository) : ViewModel()
         viewModelScope.launch {
             isLoading = true
             try {
-                logs = repository.getMealLogs()
+                logs = repository.getExerciseLogs()
             } catch (e: Exception) {
                 e.printStackTrace()
             } finally {
@@ -66,48 +65,48 @@ class MealTrackerViewModel(private val repository: NoteRepository) : ViewModel()
         }
     }
 
-    fun updateMeal(log: MealLog, key: String, value: List<String>) {
+    fun updateExercise(log: ExerciseLog, value: List<String>) {
         viewModelScope.launch {
-            repository.updateFrontmatterValue(log.file, key, value)
+            repository.updateFrontmatterValue(log.file, "exercise", value)
             loadLogs()
         }
     }
 }
 
-class MealTrackerViewModelFactory(private val context: Context) : ViewModelProvider.Factory {
+class ExerciseTrackerViewModelFactory(private val context: Context) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return MealTrackerViewModel(NoteRepository(context)) as T
+        return ExerciseTrackerViewModel(NoteRepository(context)) as T
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MealTrackerScreen(
+fun ExerciseTrackerScreen(
     onMenu: () -> Unit
 ) {
     val context = LocalContext.current
-    val viewModel: MealTrackerViewModel = viewModel(factory = MealTrackerViewModelFactory(context))
+    val viewModel: ExerciseTrackerViewModel =
+        viewModel(factory = ExerciseTrackerViewModelFactory(context))
 
     LaunchedEffect(Unit) {
         viewModel.loadLogs()
     }
 
-    var editDialogState by remember { mutableStateOf<Triple<MealLog, String, List<String>>?>(null) }
-    // Triple: (Log, Key, CurrentValue)
+    var editDialogState by remember { mutableStateOf<Pair<ExerciseLog, List<String>>?>(null) }
 
     if (editDialogState != null) {
-        val (log, key, initialValue) = editDialogState!!
+        val (log, initialValue) = editDialogState!!
         var textValue by remember { mutableStateOf(initialValue.joinToString("\n")) }
 
         AlertDialog(
             onDismissRequest = { editDialogState = null },
-            title = { Text("Edit ${key.replaceFirstChar { it.uppercase() }}") },
+            title = { Text("Edit Exercise Menu") },
             text = {
                 OutlinedTextField(
                     value = textValue,
                     onValueChange = { textValue = it },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("$key (one item per line)") },
+                    label = { Text("Exercise (one item per line)") },
                     minLines = 3,
                     maxLines = 10
                 )
@@ -115,7 +114,7 @@ fun MealTrackerScreen(
             confirmButton = {
                 TextButton(onClick = {
                     val list = textValue.lines().filter { it.isNotBlank() }
-                    viewModel.updateMeal(log, key, list)
+                    viewModel.updateExercise(log, list)
                     editDialogState = null
                 }) {
                     Text("Save")
@@ -133,7 +132,7 @@ fun MealTrackerScreen(
         topBar = {
             TopAppBar(
                 modifier = Modifier.statusBarsPadding(),
-                title = { Text("Meal Tracker") },
+                title = { Text("Exercise Tracker") },
                 navigationIcon = {
                     IconButton(onClick = onMenu) {
                         Icon(Icons.Default.Menu, contentDescription = "Menu")
@@ -142,11 +141,9 @@ fun MealTrackerScreen(
             )
         }
     ) { paddingValues ->
-        Box(
-            modifier = Modifier
-                .padding(paddingValues)
-                .fillMaxSize()
-        ) {
+        Box(modifier = Modifier
+            .padding(paddingValues)
+            .fillMaxSize()) {
             if (viewModel.isLoading) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator()
@@ -161,43 +158,18 @@ fun MealTrackerScreen(
                         Column(modifier = Modifier.padding(16.dp)) {
                             Text(text = log.date, style = MaterialTheme.typography.titleMedium)
                             Spacer(Modifier.height(8.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            OutlinedButton(
+                                onClick = { editDialogState = log to log.exercise },
+                                modifier = Modifier.fillMaxWidth()
                             ) {
-                                MealButton(
-                                    label = "Morning",
-                                    value = log.morning,
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    editDialogState = Triple(log, "morning", log.morning)
-                                }
-                                MealButton(
-                                    label = "Lunch",
-                                    value = log.lunch,
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    editDialogState = Triple(log, "lunch", log.lunch)
-                                }
-                            }
-                            Spacer(Modifier.height(8.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                MealButton(
-                                    label = "Dinner",
-                                    value = log.dinner,
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    editDialogState = Triple(log, "dinner", log.dinner)
-                                }
-                                MealButton(
-                                    label = "Snacks",
-                                    value = log.snacks,
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    editDialogState = Triple(log, "snacks", log.snacks)
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Icon(Icons.Default.FitnessCenter, contentDescription = null)
+                                    Text(
+                                        text = if (log.exercise.isEmpty()) "No record" else log.exercise.joinToString(
+                                            ", "
+                                        ),
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
                                 }
                             }
                         }
@@ -205,28 +177,6 @@ fun MealTrackerScreen(
                     }
                 }
             }
-        }
-    }
-}
-
-@Composable
-fun MealButton(
-    label: String,
-    value: List<String>,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
-) {
-    OutlinedButton(
-        onClick = onClick,
-        modifier = modifier
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(text = label, style = MaterialTheme.typography.labelSmall)
-            Text(
-                text = if (value.isEmpty()) "--" else value.joinToString(", "),
-                style = MaterialTheme.typography.bodySmall,
-                maxLines = 2
-            )
         }
     }
 }

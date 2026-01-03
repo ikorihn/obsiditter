@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Nightlight
 import androidx.compose.material.icons.filled.Restaurant
@@ -26,6 +27,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.ikorihn.obsiditter.data.Prefs
+import com.ikorihn.obsiditter.ui.exercisetracker.ExerciseTrackerScreen
 import com.ikorihn.obsiditter.ui.home.HomeScreen
 import com.ikorihn.obsiditter.ui.mealtracker.MealTrackerScreen
 import com.ikorihn.obsiditter.ui.settings.SettingsScreen
@@ -80,6 +82,16 @@ fun ObsiditterApp() {
                     modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
                 )
                 NavigationDrawerItem(
+                    label = { Text("Exercise Tracker") },
+                    icon = { Icon(Icons.Default.FitnessCenter, null) },
+                    selected = false,
+                    onClick = {
+                        scope.launch { drawerState.close() }
+                        navController.navigate("exercise_tracker")
+                    },
+                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                )
+                NavigationDrawerItem(
                     label = { Text("Settings") },
                     icon = { Icon(Icons.Default.Settings, null) },
                     selected = false,
@@ -115,6 +127,11 @@ fun ObsiditterApp() {
             }
             composable("meal_tracker") {
                 MealTrackerScreen(
+                    onMenu = { scope.launch { drawerState.open() } }
+                )
+            }
+            composable("exercise_tracker") {
+                ExerciseTrackerScreen(
                     onMenu = { scope.launch { drawerState.open() } }
                 )
             }

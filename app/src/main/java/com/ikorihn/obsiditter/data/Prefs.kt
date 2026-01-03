@@ -39,6 +39,7 @@ morning: []
 lunch: []
 dinner: []
 snacks: []
+exercise: []
 reading_min: 0
 exercise_min: 0
 ---
