@@ -14,6 +14,7 @@ activityCompose = "1.8.0"
 composeBom = "2024.04.01"
 lifecycleRuntimeKtx = "2.6.1"
 navigationCompose = "2.7.7"
+jacksonDataformat = "2.18.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -38,6 +39,8 @@ androidx-material-icons-extended = { group = "androidx.compose.material", name =
 androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycleRuntimeKtx" }
 androidx-navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref = "navigationCompose" }
 jetbrains-markdown = { group = "org.jetbrains", name = "markdown-jvm", version = "0.7.3" }
+jackson-dataformat = { group = "com.fasterxml.jackson.dataformat", name = "jackson-dataformat-yaml", version.ref = "jacksonDataformat" }
+jackson-module-kotlin = { group = "com.fasterxml.jackson.module", name = "jackson-module-kotlin", version.ref = "jacksonDataformat" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

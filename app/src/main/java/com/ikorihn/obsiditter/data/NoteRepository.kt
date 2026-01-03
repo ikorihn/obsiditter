@@ -1,8 +1,12 @@
 package com.ikorihn.obsiditter.data
 
+
 import android.content.Context
 import android.provider.DocumentsContract
 import androidx.documentfile.provider.DocumentFile
+import com.fasterxml.jackson.core.type.TypeReference
+import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
+import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import com.ikorihn.obsiditter.model.Note
 import com.ikorihn.obsiditter.model.notesToEntry
 import kotlinx.coroutines.Dispatchers
@@ -15,7 +19,6 @@ import java.io.InputStreamReader
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
-
 data class NoteFile(
     val name: String,
     val file: DocumentFile
@@ -24,6 +27,7 @@ data class NoteFile(
 class NoteRepository(private val context: Context) {
 
     private val prefs = Prefs(context)
+    private val yamlMapper = YAMLMapper().registerKotlinModule()
 
     private fun getRootDirectory(): DocumentFile? {
         val uri = prefs.storageUri ?: return null
@@ -253,35 +257,60 @@ class NoteRepository(private val context: Context) {
         return@withContext null
     }
 
-    suspend fun getFrontmatterValue(noteFile: NoteFile, key: String): String? = withContext(Dispatchers.IO) {
-        val content = readText(noteFile.file) ?: return@withContext null
-        val regex = Regex("^$key:\\s*(.*)$", RegexOption.MULTILINE)
-        val match = regex.find(content)
-        return@withContext match?.groupValues?.get(1)?.trim()
+    private fun parseFrontmatter(content: String): Map<String, Any>? {
+        val regex = Regex("^---\\n([\\s\\S]*?)\\n---", RegexOption.MULTILINE)
+        val match = regex.find(content) ?: return null
+        val yamlContent = match.groupValues[1]
+
+        return try {
+            yamlMapper.readValue(yamlContent, object : TypeReference<Map<String, Any>>() {})
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
     }
 
-    suspend fun updateFrontmatterValue(noteFile: NoteFile, key: String, value: String) = withContext(Dispatchers.IO) {
-        val content = readText(noteFile.file) ?: return@withContext
-        val regex = Regex("^($key:\\s*)(.*)$", RegexOption.MULTILINE)
-        
-        val newContent = if (regex.containsMatchIn(content)) {
-            content.replace(regex, "$1$value")
-        } else {
-            // Key not found, try to insert into frontmatter if exists
-             val frontmatterRegex = Regex("^---\\n([\\s\\S]*?)\\n---", RegexOption.MULTILINE)
-             val match = frontmatterRegex.find(content)
-             if (match != null) {
-                 val frontmatterContent = match.groupValues[1]
-                 val newFrontmatterContent = "$frontmatterContent\n$key: $value"
-                 content.replace(frontmatterContent, newFrontmatterContent)
-             } else {
-                 return@withContext
-             }
+    suspend fun getFrontmatterValue(noteFile: NoteFile, key: String): String? =
+        withContext(Dispatchers.IO) {
+            val content = readText(noteFile.file) ?: return@withContext null
+            val frontmatter = parseFrontmatter(content)
+            return@withContext frontmatter?.get(key)?.toString()?.trim()
         }
-        
-        writeText(noteFile.file, newContent)
-    }
-    
+
+    suspend fun updateFrontmatterValue(noteFile: NoteFile, key: String, value: String) =
+        withContext(Dispatchers.IO) {
+            val content = readText(noteFile.file) ?: return@withContext
+
+            val regex = Regex("^---\\n([\\s\\S]*?)\\n---", RegexOption.MULTILINE)
+            val match = regex.find(content)
+
+            val updatedMap: MutableMap<String, Any> = if (match != null) {
+                val yamlContent = match.groupValues[1]
+                try {
+                    yamlMapper.readValue(yamlContent, object : TypeReference<MutableMap<String, Any>>() {})
+                } catch (e: Exception) {
+                    mutableMapOf()
+                }
+            } else {
+                mutableMapOf()
+            }
+            
+            updatedMap[key] = value
+            
+            val newYamlBody = yamlMapper.writeValueAsString(updatedMap)
+                .removePrefix("---")
+                .trim()
+            val newFrontmatter = "---\n$newYamlBody\n---"
+            
+            val newContent = if (match != null) {
+                content.replace(match.value, newFrontmatter)
+            } else {
+                "$newFrontmatter\n\n$content"
+            }
+
+            writeText(noteFile.file, newContent)
+        }
+
     data class DailyLog(
         val date: String,
         val wakeTime: String?,
@@ -293,12 +322,12 @@ class NoteRepository(private val context: Context) {
         val files = getSortedNoteFiles()
         return@withContext files.map { noteFile ->
             val date = noteFile.name.removeSuffix(".md")
-            // This reads the file multiple times if we use getFrontmatterValue. 
-            // Optimization: Read once and extract both.
             val content = readText(noteFile.file) ?: ""
-            val wakeTime = Regex("^wake_time:\\s*(.*)$", RegexOption.MULTILINE).find(content)?.groupValues?.get(1)?.trim()
-            val sleepTime = Regex("^sleep_time:\\s*(.*)$", RegexOption.MULTILINE).find(content)?.groupValues?.get(1)?.trim()
-            
+            val frontmatter = parseFrontmatter(content)
+
+            val wakeTime = frontmatter?.get("wake_time")?.toString()
+            val sleepTime = frontmatter?.get("sleep_time")?.toString()
+
             DailyLog(
                 date = date,
                 wakeTime = if (wakeTime.isNullOrBlank()) null else wakeTime,
