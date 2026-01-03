@@ -2,6 +2,7 @@ package com.ikorihn.obsiditter.data
 
 
 import android.content.Context
+import android.net.Uri
 import android.provider.DocumentsContract
 import androidx.documentfile.provider.DocumentFile
 import com.fasterxml.jackson.core.type.TypeReference
@@ -40,6 +41,15 @@ class NoteRepository(private val context: Context) {
 
     suspend fun getSortedNoteFiles(): List<NoteFile> = withContext(Dispatchers.IO) {
         val uri = prefs.storageUri ?: return@withContext emptyList()
+
+        val regex = Regex("\\d{4}-\\d{2}-\\d{2}\\.md")
+        val result = getNoteFiles(uri, regex).toMutableList()
+        result.sortByDescending { it.name }
+
+        return@withContext result
+    }
+
+    suspend fun getNoteFiles(uri: Uri, regex: Regex): List<NoteFile> = withContext(Dispatchers.IO) {
         val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(
             uri,
             DocumentsContract.getTreeDocumentId(uri)
@@ -54,7 +64,6 @@ class NoteRepository(private val context: Context) {
         val sortOrder = "${DocumentsContract.Document.COLUMN_DISPLAY_NAME} DESC"
 
         val result = mutableListOf<NoteFile>()
-        val regex = Regex("\\d{4}-\\d{2}-\\d{2}\\.md")
 
         try {
             context.contentResolver.query(
@@ -91,8 +100,6 @@ class NoteRepository(private val context: Context) {
                 }
                 ?: emptyList()
         }
-
-        result.sortByDescending { it.name }
 
         return@withContext result
     }
@@ -143,11 +150,13 @@ class NoteRepository(private val context: Context) {
                         if (lines.isEmpty()) continue
 
                         val firstLine = lines[0].trim()
-                        val match = Regex("^[-*+]\\s+(\\d{2}:\\d{2})\\s*(.*)").find(firstLine)
+                        val match =
+                            Regex("^[-*+]\\s+(\\d{2}:\\d{2}(:\\d{2})?)\\s*(.*)").find(firstLine)
 
                         if (match != null) {
                             val time = match.groupValues[1]
-                            val firstLineContent = match.groupValues[2]
+
+                            val firstLineContent = match.groupValues[3]
 
                             val contentBuilder = StringBuilder()
                             if (firstLineContent.isNotBlank()) {
@@ -439,19 +448,19 @@ class NoteRepository(private val context: Context) {
 
     suspend fun getCategoryRecords(category: Category): List<CategoryRecord> =
         withContext(Dispatchers.IO) {
-            val dir = getOrCreateDirectory(category) ?: return@withContext emptyList()
-            val files = dir.listFiles()
+            val dir = prefs.getCategoryUri(category) ?: return@withContext emptyList()
+            val regex = Regex(".*\\.md")
+            val files = getNoteFiles(dir, regex)
 
             files.mapNotNull { file ->
-                val content = readText(file) ?: return@mapNotNull null
+                val content = readText(file.file) ?: return@mapNotNull null
                 val frontmatter = parseFrontmatter(content)
-                val title = frontmatter?.get("title")?.toString() ?: file.name?.removeSuffix(".md")
-                ?: "Untitled"
+                val title = frontmatter?.get("title")?.toString() ?: file.name.removeSuffix(".md")
                 val date = frontmatter?.get("date")?.toString() ?: ""
                 // Extract body content (remove frontmatter)
                 val body = content.replace(Regex("^---\\n[\\s\\S]*?\\n---"), "").trim()
 
-                CategoryRecord(category, NoteFile(file.name ?: "", file), title, date, body)
+                CategoryRecord(category, file, title, date, body)
             }.sortedByDescending { it.date }
         }
 
