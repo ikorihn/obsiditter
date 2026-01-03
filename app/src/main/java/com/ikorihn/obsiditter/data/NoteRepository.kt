@@ -238,25 +238,8 @@ class NoteRepository(private val context: Context) {
         val now = LocalDateTime.now()
             .format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss")) + "+09:00"
 
-        val text = """
----
-date: "$now"
-tags: 
-    - 'daily'
-fileClass: DailyLog
-mood_morning:
-wake_time:
-mood_evening:
-sleep_time:
-snacks:
-reading_min:
-exercise_min:
----
-
-## Memo
-
-## Journal
-""".trimIndent()
+        val template = prefs.noteTemplate
+        val text = template.replace("{{date}}", now)
         writeText(file, text)
     }
 

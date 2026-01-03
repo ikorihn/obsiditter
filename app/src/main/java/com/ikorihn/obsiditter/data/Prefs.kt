@@ -18,4 +18,33 @@ class Prefs(context: Context) {
                 putString("storage_uri", value?.toString())
             }
         }
+
+    var noteTemplate: String
+        get() = sharedPreferences.getString("note_template", defaultTemplate) ?: defaultTemplate
+        set(value) {
+            sharedPreferences.edit {
+                putString("note_template", value)
+            }
+        }
+
+    companion object {
+        const val defaultTemplate = """---
+date: "{{date}}"
+tags: 
+    - 'daily'
+fileClass: DailyLog
+mood_morning:
+wake_time:
+mood_evening:
+sleep_time:
+snacks:
+reading_min:
+exercise_min:
+---
+
+## Memo
+
+## Journal
+"""
+    }
 }
