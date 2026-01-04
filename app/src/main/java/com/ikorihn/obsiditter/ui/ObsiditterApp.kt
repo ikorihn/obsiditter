@@ -120,7 +120,9 @@ fun ObsiditterApp() {
             composable("home") {
                 HomeScreen(
                     onSettings = { navController.navigate("settings") },
-                    onMenu = { scope.launch { drawerState.open() } }
+                    onMenu = { scope.launch { drawerState.open() } },
+                    onNavigateToMealTracker = { navController.navigate("meal_tracker") },
+                    onNavigateToExerciseTracker = { navController.navigate("exercise_tracker") }
                 )
             }
             composable("settings") {

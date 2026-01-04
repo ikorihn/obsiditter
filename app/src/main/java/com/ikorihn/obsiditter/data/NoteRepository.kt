@@ -287,32 +287,34 @@ class NoteRepository(private val context: Context) {
         }
 
     suspend fun updateFrontmatterValue(noteFile: NoteFile, key: String, value: Any) =
+        updateFrontmatterValues(noteFile, mapOf(key to value))
+
+
+    suspend fun updateFrontmatterValues(noteFile: NoteFile, updates: Map<String, Any>) =
         withContext(Dispatchers.IO) {
             val content = readText(noteFile.file) ?: return@withContext
-
             val regex = Regex("^---\\n([\\s\\S]*?)\\n---", RegexOption.MULTILINE)
             val match = regex.find(content)
-
             val updatedMap: MutableMap<String, Any> = if (match != null) {
                 val yamlContent = match.groupValues[1]
                 try {
                     yamlMapper.readValue(
                         yamlContent,
-                        object : TypeReference<MutableMap<String, Any>>() {})
+                        object : TypeReference<MutableMap<String, Any>>() {}
+                    )
                 } catch (e: Exception) {
                     mutableMapOf()
                 }
             } else {
                 mutableMapOf()
             }
-
-            updatedMap[key] = value
-
+            updates.forEach { (key, value) ->
+                updatedMap[key] = value
+            }
             val newYamlBody = yamlMapper.writeValueAsString(updatedMap)
                 .removePrefix("---")
                 .trim()
             val newFrontmatter = "---\n$newYamlBody\n---"
-
             val newContent = if (match != null) {
                 content.replace(match.value, newFrontmatter)
             } else {

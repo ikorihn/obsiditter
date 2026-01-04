@@ -17,12 +17,16 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.FitnessCenter
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Nightlight
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -77,6 +81,10 @@ class HomeViewModel(private val repository: NoteRepository) : ViewModel() {
         private set
     var sleepTime by mutableStateOf<String?>(null)
         private set
+    var mealLog by mutableStateOf<NoteRepository.MealLog?>(null)
+        private set
+    var exerciseLog by mutableStateOf<NoteRepository.ExerciseLog?>(null)
+        private set
 
     private var allFiles: List<NoteFile> = emptyList()
     private var currentPage = 0
@@ -108,6 +116,12 @@ class HomeViewModel(private val repository: NoteRepository) : ViewModel() {
         val todayFile = repository.getTodayNoteFile() ?: return
         wakeTime = repository.getFrontmatterValue(todayFile, "wake_time")
         sleepTime = repository.getFrontmatterValue(todayFile, "sleep_time")
+
+        val mealLogs = repository.getMealLogs()
+        mealLog = mealLogs.find { it.date == todayFile.name.removeSuffix(".md") }
+
+        val exerciseLogs = repository.getExerciseLogs()
+        exerciseLog = exerciseLogs.find { it.date == todayFile.name.removeSuffix(".md") }
     }
 
     fun updateTime(key: String, time: String) {
@@ -116,6 +130,26 @@ class HomeViewModel(private val repository: NoteRepository) : ViewModel() {
             repository.updateFrontmatterValue(todayFile, key, time)
             if (key == "wake_time") wakeTime = time
             if (key == "sleep_time") sleepTime = time
+        }
+    }
+
+    fun updateMeal(key: String, items: List<String>) {
+        updateMeals(mapOf(key to items))
+    }
+
+    fun updateMeals(updates: Map<String, List<String>>) {
+        viewModelScope.launch {
+            val todayFile = repository.getTodayNoteFile() ?: return@launch
+            repository.updateFrontmatterValues(todayFile, updates)
+            loadTodayMetadata()
+        }
+    }
+
+    fun updateExercise(items: List<String>) {
+        viewModelScope.launch {
+            val todayFile = repository.getTodayNoteFile() ?: return@launch
+            repository.updateFrontmatterValue(todayFile, "exercise", items)
+            loadTodayMetadata()
         }
     }
 
@@ -219,7 +253,9 @@ class HomeViewModelFactory(private val context: Context) :
 @Composable
 fun HomeScreen(
     onSettings: () -> Unit,
-    onMenu: () -> Unit // Added callback for menu
+    onMenu: () -> Unit,
+    onNavigateToMealTracker: () -> Unit,
+    onNavigateToExerciseTracker: () -> Unit
 ) {
     val context = LocalContext.current
     val viewModel: HomeViewModel = viewModel(factory = HomeViewModelFactory(context))
@@ -231,9 +267,110 @@ fun HomeScreen(
     var inputTags by remember { mutableStateOf("") }
 
     var showTimePicker by remember { mutableStateOf<String?>(null) }
+    var showMealDialog by remember { mutableStateOf(false) }
+    var showExerciseDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         viewModel.loadNotes()
+    }
+
+    if (showMealDialog) {
+        val mealLog = viewModel.mealLog
+        var morningText by remember { mutableStateOf(mealLog?.morning?.joinToString("\n") ?: "") }
+        var lunchText by remember { mutableStateOf(mealLog?.lunch?.joinToString("\n") ?: "") }
+        var dinnerText by remember { mutableStateOf(mealLog?.dinner?.joinToString("\n") ?: "") }
+        var snacksText by remember { mutableStateOf(mealLog?.snacks?.joinToString("\n") ?: "") }
+
+        AlertDialog(
+            onDismissRequest = { showMealDialog = false },
+            title = { Text("Today's Meals") },
+            text = {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    OutlinedTextField(
+                        value = morningText,
+                        onValueChange = { morningText = it },
+                        label = { Text("Morning") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = lunchText,
+                        onValueChange = { lunchText = it },
+                        label = { Text("Lunch") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = dinnerText,
+                        onValueChange = { dinnerText = it },
+                        label = { Text("Dinner") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = snacksText,
+                        onValueChange = { snacksText = it },
+                        label = { Text("Snacks") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val updates = mapOf(
+                        "morning" to morningText.lines().filter { it.isNotBlank() },
+                        "lunch" to lunchText.lines().filter { it.isNotBlank() },
+                        "dinner" to dinnerText.lines().filter { it.isNotBlank() },
+                        "snacks" to snacksText.lines().filter { it.isNotBlank() }
+                    )
+                    viewModel.updateMeals(updates)
+                    showMealDialog = false
+                }) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showMealDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (showExerciseDialog) {
+        val exerciseLog = viewModel.exerciseLog
+        var exerciseText by remember {
+            mutableStateOf(
+                exerciseLog?.exercise?.joinToString("\n") ?: ""
+            )
+        }
+
+        AlertDialog(
+            onDismissRequest = { showExerciseDialog = false },
+            title = { Text("Today's Exercise") },
+            text = {
+                OutlinedTextField(
+                    value = exerciseText,
+                    onValueChange = { exerciseText = it },
+                    label = { Text("Exercise (one per line)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 5
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.updateExercise(exerciseText.lines().filter { it.isNotBlank() })
+                    showExerciseDialog = false
+                }) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showExerciseDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 
     if (showTimePicker != null) {
@@ -287,32 +424,62 @@ fun HomeScreen(
                     navigationIcon = {
                         IconButton(onClick = onMenu) {
                             Icon(
-                                Icons.Default.Settings,
+                                Icons.Default.Menu,
                                 contentDescription = "Menu"
-                            ) // Temporarily using Settings icon as Menu, will fix in ObsiditterApp context or use Menu icon
+                            )
                         }
                     },
                     actions = {
-                        // Settings moved to Drawer? Or keep here? User said "Add menu from sidebar". 
-                        // I will keep settings here for now but usually sidebar has settings.
-                        // Let's use the Menu icon for the drawer trigger.
                     }
                 )
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    OutlinedButton(onClick = { showTimePicker = "wake_time" }) {
+                    OutlinedButton(
+                        onClick = { showTimePicker = "wake_time" },
+                        modifier = Modifier.weight(1f)
+                    ) {
                         Icon(Icons.Filled.WbSunny, contentDescription = "Wake Time")
-                        Spacer(Modifier.width(8.dp))
+                        Spacer(Modifier.width(4.dp))
                         Text("${viewModel.wakeTime ?: "--:--"}")
                     }
-                    OutlinedButton(onClick = { showTimePicker = "sleep_time" }) {
+                    OutlinedButton(
+                        onClick = { showTimePicker = "sleep_time" },
+                        modifier = Modifier.weight(1f)
+                    ) {
                         Icon(Icons.Filled.Nightlight, contentDescription = "Sleep Time")
-                        Spacer(Modifier.width(8.dp))
+                        Spacer(Modifier.width(4.dp))
                         Text("${viewModel.sleepTime ?: "--:--"}")
+                    }
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = { showMealDialog = true },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Filled.Restaurant, contentDescription = "Meal")
+                        Spacer(Modifier.width(4.dp))
+                        val mealCount = viewModel.mealLog?.let {
+                            it.morning.size + it.lunch.size + it.dinner.size + it.snacks.size
+                        } ?: 0
+                        Text("$mealCount items")
+                    }
+                    OutlinedButton(
+                        onClick = { showExerciseDialog = true },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Filled.FitnessCenter, contentDescription = "Exercise")
+                        Spacer(Modifier.width(4.dp))
+                        val exerciseCount = viewModel.exerciseLog?.exercise?.size ?: 0
+                        Text("$exerciseCount items")
                     }
                 }
             }
