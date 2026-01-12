@@ -17,8 +17,6 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Delete
@@ -26,6 +24,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Nightlight
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material3.AlertDialog
@@ -46,6 +45,7 @@ import androidx.compose.material3.TimePicker
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -56,12 +56,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ikorihn.obsiditter.data.NoteFile
 import com.ikorihn.obsiditter.data.NoteRepository
 import com.ikorihn.obsiditter.model.Note
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -108,6 +111,25 @@ class HomeViewModel(private val repository: NoteRepository) : ViewModel() {
                 e.printStackTrace()
             } finally {
                 isLoading = false
+            }
+        }
+    }
+
+    fun refreshData() {
+        if (!repository.isStorageConfigured()) return
+        viewModelScope.launch {
+            try {
+                allFiles = repository.getSortedNoteFiles()
+
+                isLoading = true
+                notes = emptyList()
+                currentPage = 0
+                isEndReached = false
+                loadMoreNotesInternal()
+                isLoading = false
+                loadTodayMetadata()
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
         }
     }
@@ -267,70 +289,67 @@ fun HomeScreen(
     var inputTags by remember { mutableStateOf("") }
 
     var showTimePicker by remember { mutableStateOf<String?>(null) }
-    var showMealDialog by remember { mutableStateOf(false) }
+    var editingMealType by remember { mutableStateOf<String?>(null) }
     var showExerciseDialog by remember { mutableStateOf(false) }
+
+    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.refreshData()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
 
     LaunchedEffect(Unit) {
         viewModel.loadNotes()
+        while (true) {
+            delay(30000)
+            viewModel.refreshData()
+        }
     }
 
-    if (showMealDialog) {
-        val mealLog = viewModel.mealLog
-        var morningText by remember { mutableStateOf(mealLog?.morning?.joinToString("\n") ?: "") }
-        var lunchText by remember { mutableStateOf(mealLog?.lunch?.joinToString("\n") ?: "") }
-        var dinnerText by remember { mutableStateOf(mealLog?.dinner?.joinToString("\n") ?: "") }
-        var snacksText by remember { mutableStateOf(mealLog?.snacks?.joinToString("\n") ?: "") }
+    if (editingMealType != null) {
+        val type = editingMealType!!
+        val currentItems = when (type) {
+            "morning" -> viewModel.mealLog?.morning
+            "lunch" -> viewModel.mealLog?.lunch
+            "dinner" -> viewModel.mealLog?.dinner
+            "snacks" -> viewModel.mealLog?.snacks
+            else -> emptyList()
+        } ?: emptyList()
+
+        var text by remember(type) { mutableStateOf(currentItems.joinToString("\n")) }
 
         AlertDialog(
-            onDismissRequest = { showMealDialog = false },
-            title = { Text("Today's Meals") },
+            onDismissRequest = { editingMealType = null },
+            title = { Text(type.replaceFirstChar { if (it.isLowerCase()) it.titlecase(java.util.Locale.getDefault()) else it.toString() }) },
             text = {
-                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                    OutlinedTextField(
-                        value = morningText,
-                        onValueChange = { morningText = it },
-                        label = { Text("Morning") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = lunchText,
-                        onValueChange = { lunchText = it },
-                        label = { Text("Lunch") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = dinnerText,
-                        onValueChange = { dinnerText = it },
-                        label = { Text("Dinner") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = snacksText,
-                        onValueChange = { snacksText = it },
-                        label = { Text("Snacks") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    label = { Text("Items (one per line)") },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(200.dp),
+                    minLines = 3
+                )
             },
             confirmButton = {
                 TextButton(onClick = {
-                    val updates = mapOf(
-                        "morning" to morningText.lines().filter { it.isNotBlank() },
-                        "lunch" to lunchText.lines().filter { it.isNotBlank() },
-                        "dinner" to dinnerText.lines().filter { it.isNotBlank() },
-                        "snacks" to snacksText.lines().filter { it.isNotBlank() }
-                    )
-                    viewModel.updateMeals(updates)
-                    showMealDialog = false
+                    val items = text.lines().filter { it.isNotBlank() }
+                    viewModel.updateMeal(type, items)
+                    editingMealType = null
                 }) {
                     Text("Save")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showMealDialog = false }) {
+                TextButton(onClick = { editingMealType = null }) {
                     Text("Cancel")
                 }
             }
@@ -430,6 +449,9 @@ fun HomeScreen(
                         }
                     },
                     actions = {
+                        IconButton(onClick = { viewModel.refreshData() }) {
+                            Icon(Icons.Default.Refresh, contentDescription = "Refresh")
+                        }
                     }
                 )
                 Row(
@@ -462,24 +484,63 @@ fun HomeScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     OutlinedButton(
-                        onClick = { showMealDialog = true },
+                        onClick = { editingMealType = "morning" },
                         modifier = Modifier.weight(1f)
                     ) {
-                        Icon(Icons.Filled.Restaurant, contentDescription = "Meal")
+                        Icon(Icons.Filled.Restaurant, contentDescription = "Morning")
                         Spacer(Modifier.width(4.dp))
-                        val mealCount = viewModel.mealLog?.let {
-                            it.morning.size + it.lunch.size + it.dinner.size + it.snacks.size
-                        } ?: 0
-                        Text("$mealCount items")
+                        val count = viewModel.mealLog?.morning?.size ?: 0
+                        Text("Morn ($count)")
                     }
                     OutlinedButton(
-                        onClick = { showExerciseDialog = true },
+                        onClick = { editingMealType = "lunch" },
                         modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Filled.Restaurant, contentDescription = "Lunch")
+                        Spacer(Modifier.width(4.dp))
+                        val count = viewModel.mealLog?.lunch?.size ?: 0
+                        Text("Lunch ($count)")
+                    }
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = { editingMealType = "dinner" },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Filled.Restaurant, contentDescription = "Dinner")
+                        Spacer(Modifier.width(4.dp))
+                        val count = viewModel.mealLog?.dinner?.size ?: 0
+                        Text("Dinner ($count)")
+                    }
+                    OutlinedButton(
+                        onClick = { editingMealType = "snacks" },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Filled.Restaurant, contentDescription = "Snacks")
+                        Spacer(Modifier.width(4.dp))
+                        val count = viewModel.mealLog?.snacks?.size ?: 0
+                        Text("Snacks ($count)")
+                    }
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = { showExerciseDialog = true },
+                        modifier = Modifier.fillMaxWidth()
                     ) {
                         Icon(Icons.Filled.FitnessCenter, contentDescription = "Exercise")
                         Spacer(Modifier.width(4.dp))
                         val exerciseCount = viewModel.exerciseLog?.exercise?.size ?: 0
-                        Text("$exerciseCount items")
+                        Text("Exercise ($exerciseCount items)")
                     }
                 }
             }
