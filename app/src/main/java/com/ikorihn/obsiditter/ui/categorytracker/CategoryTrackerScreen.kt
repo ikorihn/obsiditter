@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -51,6 +52,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -328,7 +330,15 @@ fun AddRecordDialog(
     var body by remember { mutableStateOf(initialBody) }
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { /* Do nothing to prevent dismissal */ },
+        properties = DialogProperties(
+            dismissOnBackPress = false,
+            dismissOnClickOutside = false,
+            usePlatformDefaultWidth = false
+        ),
+        modifier = Modifier
+            .fillMaxWidth(0.95f)
+            .fillMaxHeight(0.9f),
         title = {
             Text(
                 if (isEdit) "Edit ${category.displayName}" else "Add ${category.displayName}"
@@ -373,8 +383,8 @@ fun AddRecordDialog(
                     onValueChange = { body = it },
                     label = { Text("Memo") },
                     modifier = Modifier.fillMaxWidth(),
-                    minLines = 3,
-                    maxLines = 10
+                    minLines = 5,
+                    maxLines = 20
                 )
             }
         },
