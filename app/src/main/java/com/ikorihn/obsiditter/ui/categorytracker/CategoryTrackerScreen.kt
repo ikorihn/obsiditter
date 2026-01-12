@@ -32,7 +32,10 @@ import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -44,9 +47,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -106,6 +111,14 @@ class CategoryTrackerViewModel(private val repository: NoteRepository) : ViewMod
             loadRecords(record.category)
         }
     }
+    
+    suspend fun getFullBody(record: CategoryRecord): String {
+        return repository.getFullRecordBody(record)
+    }
+    
+    suspend fun getUniqueValues(category: Category, key: String): List<String> {
+        return repository.getUniqueFieldValues(category, key)
+    }
 }
 
 class CategoryTrackerViewModelFactory(private val context: Context) : ViewModelProvider.Factory {
@@ -127,6 +140,7 @@ fun CategoryTrackerScreen(
     var showAddDialog by remember { mutableStateOf(false) }
     var recordToEdit by remember { mutableStateOf<CategoryRecord?>(null) }
     var recordToDelete by remember { mutableStateOf<CategoryRecord?>(null) }
+    val scope = rememberCoroutineScope()
 
     BackHandler(enabled = selectedCategory != null) {
         selectedCategory = null
@@ -135,6 +149,7 @@ fun CategoryTrackerScreen(
     if (showAddDialog && selectedCategory != null) {
         AddRecordDialog(
             category = selectedCategory!!,
+            getOptions = { key -> viewModel.getUniqueValues(selectedCategory!!, key) },
             onDismiss = { showAddDialog = false },
             onConfirm = { date, fields, body ->
                 viewModel.addRecord(selectedCategory!!, date, fields, body)
@@ -151,6 +166,7 @@ fun CategoryTrackerScreen(
             initialFields = currentRecordToEdit.fields,
             initialBody = currentRecordToEdit.body,
             isEdit = true,
+            getOptions = { key -> viewModel.getUniqueValues(currentRecordToEdit.category, key) },
             onDismiss = { recordToEdit = null },
             onConfirm = { date, fields, body ->
                 viewModel.updateRecord(currentRecordToEdit, date, fields, body)
@@ -234,7 +250,12 @@ fun CategoryTrackerScreen(
                         items(viewModel.records) { record ->
                             RecordItem(
                                 record = record,
-                                onEdit = { recordToEdit = record },
+                                onEdit = {
+                                    scope.launch {
+                                        val fullBody = viewModel.getFullBody(record)
+                                        recordToEdit = record.copy(body = fullBody)
+                                    }
+                                },
                                 onDelete = { recordToDelete = record }
                             )
                             HorizontalDivider()
@@ -315,6 +336,7 @@ fun RecordItem(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddRecordDialog(
     category: Category,
@@ -322,6 +344,7 @@ fun AddRecordDialog(
     initialFields: Map<String, Any> = emptyMap(),
     initialBody: String = "",
     isEdit: Boolean = false,
+    getOptions: suspend (String) -> List<String> = { emptyList() },
     onDismiss: () -> Unit,
     onConfirm: (String, Map<String, Any>, String) -> Unit
 ) {
@@ -355,13 +378,12 @@ fun AddRecordDialog(
                 Spacer(Modifier.height(8.dp))
 
                 category.fields.forEach { field ->
-                    val value = fields[field.key]?.let {
-                        if (it is List<*>) it.joinToString("\n") else it.toString()
-                    } ?: ""
+                    androidx.compose.runtime.key(field.key) {
+                        val value = fields[field.key]?.let {
+                            if (it is List<*>) it.joinToString("\n") else it.toString()
+                        } ?: ""
 
-                    OutlinedTextField(
-                        value = value,
-                        onValueChange = { newValue ->
+                        val onValueChange: (String) -> Unit = { newValue ->
                             val updatedFields = fields.toMutableMap()
                             if (field.type == CategoryField.FieldType.List) {
                                 updatedFields[field.key] =
@@ -370,12 +392,69 @@ fun AddRecordDialog(
                                 updatedFields[field.key] = newValue
                             }
                             fields = updatedFields
-                        },
-                        label = { Text(field.displayName + if (field.type == CategoryField.FieldType.List) " (one per line)" else "") },
-                        modifier = Modifier.fillMaxWidth(),
-                        minLines = if (field.type == CategoryField.FieldType.List) 3 else 1
-                    )
-                    Spacer(Modifier.height(8.dp))
+                        }
+
+                        if (field.type == CategoryField.FieldType.Select) {
+                            var expanded by remember { mutableStateOf(false) }
+                            var options by remember { mutableStateOf(emptyList<String>()) }
+                            
+                            LaunchedEffect(field.key) {
+                                options = getOptions(field.key)
+                            }
+
+                            ExposedDropdownMenuBox(
+                                expanded = expanded,
+                                onExpandedChange = { expanded = !expanded },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                OutlinedTextField(
+                                    value = value,
+                                    onValueChange = onValueChange,
+                                    label = { Text(field.displayName) },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .menuAnchor(),
+                                    singleLine = true,
+                                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                                    colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors()
+                                )
+                                ExposedDropdownMenu(
+                                    expanded = expanded,
+                                    onDismissRequest = { expanded = false }
+                                ) {
+                                    options.forEach { option ->
+                                        DropdownMenuItem(
+                                            text = { Text(option) },
+                                            onClick = {
+                                                onValueChange(option)
+                                                expanded = false
+                                            },
+                                            contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding
+                                        )
+                                    }
+                                }
+                            }
+                        } else {
+                            // ShortText, LongText, List, Date
+                            val minLines = when(field.type) {
+                                CategoryField.FieldType.LongText -> 3
+                                CategoryField.FieldType.List -> 3
+                                else -> 1
+                            }
+                            val maxLines = if (field.type == CategoryField.FieldType.ShortText || field.type == CategoryField.FieldType.Date) 1 else 10
+                            
+                            OutlinedTextField(
+                                value = value,
+                                onValueChange = onValueChange,
+                                label = { Text(field.displayName + if (field.type == CategoryField.FieldType.List) " (one per line)" else "") },
+                                modifier = Modifier.fillMaxWidth(),
+                                minLines = minLines,
+                                maxLines = maxLines,
+                                singleLine = maxLines == 1
+                            )
+                        }
+                        Spacer(Modifier.height(8.dp))
+                    }
                 }
 
                 OutlinedTextField(

@@ -289,13 +289,24 @@ fun CategoryEditDialog(
                         }
                         IconButton(onClick = {
                             val newFields = fields.toMutableList()
-                            newFields[index] =
-                                field.copy(type = if (field.type == CategoryField.FieldType.String) CategoryField.FieldType.List else CategoryField.FieldType.String)
+                            val nextType = when (field.type) {
+                                CategoryField.FieldType.ShortText -> CategoryField.FieldType.LongText
+                                CategoryField.FieldType.LongText -> CategoryField.FieldType.Select
+                                CategoryField.FieldType.Select -> CategoryField.FieldType.List
+                                CategoryField.FieldType.List -> CategoryField.FieldType.Date
+                                CategoryField.FieldType.Date -> CategoryField.FieldType.ShortText
+                            }
+                            newFields[index] = field.copy(type = nextType)
                             fields = newFields
                         }) {
+                            val icon = when (field.type) {
+                                CategoryField.FieldType.List -> Icons.AutoMirrored.Filled.List
+                                CategoryField.FieldType.Select -> Icons.Default.Edit
+                                else -> Icons.Default.TextFields
+                            }
                             Icon(
-                                if (field.type == CategoryField.FieldType.List) Icons.AutoMirrored.Filled.List else Icons.Default.TextFields,
-                                contentDescription = "Toggle Type"
+                                icon,
+                                contentDescription = "Toggle Type: ${field.type.name}"
                             )
                         }
                         IconButton(onClick = {

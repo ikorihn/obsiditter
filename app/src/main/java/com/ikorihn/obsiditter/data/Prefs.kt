@@ -118,11 +118,11 @@ class Prefs(context: Context) {
                 "Radio/Podcast/YouTube",
                 "podcasts",
                 listOf(
-                    CategoryField("title", "Title"),
-                    CategoryField("program", "Program/Channel"),
+                    CategoryField("title", "Title", CategoryField.FieldType.ShortText),
+                    CategoryField("program", "Program/Channel", CategoryField.FieldType.Select),
                     CategoryField("delivered_date", "Delivered", CategoryField.FieldType.Date),
-                    CategoryField("media", "Media"),
-                    CategoryField("url", "URL"),
+                    CategoryField("media", "Media", CategoryField.FieldType.Select),
+                    CategoryField("url", "URL", CategoryField.FieldType.ShortText),
                 )
             ),
         )

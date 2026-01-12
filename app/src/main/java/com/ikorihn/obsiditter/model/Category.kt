@@ -3,10 +3,12 @@ package com.ikorihn.obsiditter.model
 data class CategoryField(
     val key: String,
     val displayName: String,
-    val type: FieldType = FieldType.String
+    val type: FieldType = FieldType.ShortText
 ) {
     enum class FieldType {
-        String,
+        ShortText, // Single line text
+        LongText,  // Multi-line text
+        Select,    // Dropdown/Autocomplete from existing values
         Date,
         List,
     }
