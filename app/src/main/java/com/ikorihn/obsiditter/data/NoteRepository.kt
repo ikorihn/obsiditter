@@ -8,6 +8,7 @@ import androidx.documentfile.provider.DocumentFile
 import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import com.ikorihn.obsiditter.model.Category
 import com.ikorihn.obsiditter.model.Note
 import com.ikorihn.obsiditter.model.notesToEntry
 import kotlinx.coroutines.Dispatchers
@@ -414,22 +415,12 @@ class NoteRepository(private val context: Context) {
         }
     }
 
-    enum class Category(val folderName: String, val displayName: String) {
-        Movies("movies", "Movies"),
-        Reading("books", "Reading"),
-        Manga("comics", "Manga"),
-        Live("events", "Live"),
-        Video("videos", "Video Works"),
-        Radio("podcasts", "Radio/Podcast"),
-        YouTube("youtube", "YouTube")
-    }
-
     data class CategoryRecord(
         val category: Category,
         val file: NoteFile,
-        val title: String,
         val date: String,
-        val content: String
+        val fields: Map<String, Any>,
+        val body: String
     )
 
     private fun getOrCreateDirectory(category: Category): DocumentFile? {
@@ -450,33 +441,40 @@ class NoteRepository(private val context: Context) {
 
     suspend fun getCategoryRecords(category: Category): List<CategoryRecord> =
         withContext(Dispatchers.IO) {
-            val dir = prefs.getCategoryUri(category) ?: return@withContext emptyList()
-            val regex = Regex(".*\\.md")
-            val files = getNoteFiles(dir, regex)
+            val dirUri = prefs.getCategoryUri(category)
+            val files = if (dirUri != null) {
+                getNoteFiles(dirUri, Regex(".*\\.md"))
+            } else {
+                val dir = getOrCreateDirectory(category) ?: return@withContext emptyList()
+                dir.listFiles().filter { it.name?.endsWith(".md") == true }
+                    .map { NoteFile(it.name ?: "", it) }
+            }
 
-            files.mapNotNull { file ->
-                val content = readText(file.file) ?: return@mapNotNull null
-                val frontmatter = parseFrontmatter(content)
-                val title = frontmatter?.get("title")?.toString() ?: file.name.removeSuffix(".md")
-                val date = frontmatter?.get("date")?.toString() ?: ""
+            files.mapNotNull {
+                val content = readText(it.file) ?: return@mapNotNull null
+                val frontmatter = parseFrontmatter(content) ?: emptyMap()
+                val date = frontmatter["date"]?.toString() ?: ""
                 // Extract body content (remove frontmatter)
                 val body = content.replace(Regex("^---\\n[\\s\\S]*?\\n---"), "").trim()
 
-                CategoryRecord(category, file, title, date, body)
+                CategoryRecord(category, it, date, frontmatter, body)
             }.sortedByDescending { it.date }
         }
 
-    suspend fun addCategoryRecord(category: Category, title: String, date: String, body: String) =
+    suspend fun addCategoryRecord(
+        category: Category,
+        date: String,
+        fields: Map<String, Any>,
+        body: String
+    ) =
         withContext(Dispatchers.IO) {
             val dir = getOrCreateDirectory(category) ?: return@withContext
-            val filename = "${date}_${title.replace(Regex("[^a-zA-Z0-9\\-_]"), "_")}.md"
+            val title = fields["title"]?.toString() ?: "Untitled"
+            val filename = "${title}.md"
             val file = dir.createFile("text/markdown", filename) ?: return@withContext
 
-            val frontmatterMap = mapOf(
-                "date" to date,
-                "category" to category.displayName,
-                "title" to title
-            )
+            val frontmatterMap = fields.toMutableMap()
+            frontmatterMap["date"] = date
 
             val frontmatter = yamlMapper.writeValueAsString(frontmatterMap)
                 .removePrefix("---")
@@ -492,15 +490,12 @@ class NoteRepository(private val context: Context) {
 
     suspend fun updateCategoryRecord(
         record: CategoryRecord,
-        title: String,
         date: String,
+        fields: Map<String, Any>,
         body: String
     ) = withContext(Dispatchers.IO) {
-        val frontmatterMap = mapOf(
-            "date" to date,
-            "category" to record.category.displayName,
-            "title" to title
-        )
+        val frontmatterMap = fields.toMutableMap()
+        frontmatterMap["date"] = date
 
         val frontmatter = yamlMapper.writeValueAsString(frontmatterMap)
             .removePrefix("---")
