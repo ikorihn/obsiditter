@@ -471,6 +471,10 @@ class NoteRepository(private val context: Context) {
         content.replace(Regex("^---\\n[\\s\\S]*?\\n---"), "").trim()
     }
 
+    private fun sanitizeFilename(name: String): String {
+        return name.replace(Regex("[\\\\/:*?\"<>|]"), "_")
+    }
+
     suspend fun addCategoryRecord(
         category: Category,
         date: String,
@@ -480,7 +484,8 @@ class NoteRepository(private val context: Context) {
         withContext(Dispatchers.IO) {
             val dir = getOrCreateDirectory(category) ?: return@withContext
             val title = fields["title"]?.toString() ?: "Untitled"
-            val filename = "${title}.md"
+            val safeTitle = sanitizeFilename(title)
+            val filename = "${safeTitle}.md"
             val file = dir.createFile("text/markdown", filename) ?: return@withContext
 
             val frontmatterMap = fields.toMutableMap()
@@ -492,10 +497,20 @@ class NoteRepository(private val context: Context) {
 
             val text = "---\n$frontmatter\n---\n\n$body"
             writeText(file, text)
+            
+            // Update DB immediately
+            noteDao.upsertNotes(listOf(NoteEntity(
+                category = category.id,
+                filename = file.name ?: filename,
+                lastModified = System.currentTimeMillis(), // Approximate
+                frontmatter = frontmatterMap,
+                bodySnippet = body.take(200)
+            )))
         }
 
     suspend fun deleteCategoryRecord(record: CategoryRecord) = withContext(Dispatchers.IO) {
         record.file.file.delete()
+        noteDao.deleteNote(record.category.id, record.file.name)
     }
 
     suspend fun updateCategoryRecord(
@@ -513,9 +528,30 @@ class NoteRepository(private val context: Context) {
 
         val text = "---\n$frontmatter\n---\n\n$body"
 
-        // If date or title changed, the filename might need to change to stay consistent with addCategoryRecord logic,
-        // but for now let's just update the content of the existing file to avoid URI issues.
-        writeText(record.file.file, text)
+        val title = fields["title"]?.toString() ?: "Untitled"
+        val safeTitle = sanitizeFilename(title)
+        val newFilename = "${safeTitle}.md"
+        val oldFilename = record.file.name
+
+        var currentFile = record.file.file
+        var currentFilename = oldFilename
+
+        if (newFilename != oldFilename) {
+            if (currentFile.renameTo(newFilename)) {
+                noteDao.deleteNote(record.category.id, oldFilename)
+                currentFilename = newFilename
+            }
+        }
+
+        writeText(currentFile, text)
+        
+        noteDao.upsertNotes(listOf(NoteEntity(
+            category = record.category.id,
+            filename = currentFilename,
+            lastModified = System.currentTimeMillis(),
+            frontmatter = frontmatterMap,
+            bodySnippet = body.take(200)
+        )))
     }
 
     private fun createFileContent(file: DocumentFile, date: String) {
