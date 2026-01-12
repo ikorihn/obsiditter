@@ -8,6 +8,8 @@ import androidx.documentfile.provider.DocumentFile
 import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import com.ikorihn.obsiditter.data.database.AppDatabase
+import com.ikorihn.obsiditter.data.database.NoteEntity
 import com.ikorihn.obsiditter.model.Category
 import com.ikorihn.obsiditter.model.Note
 import com.ikorihn.obsiditter.model.notesToEntry
@@ -30,6 +32,8 @@ class NoteRepository(private val context: Context) {
 
     private val prefs = Prefs(context)
     private val yamlMapper = YAMLMapper().registerKotlinModule()
+    private val db = AppDatabase.getDatabase(context)
+    private val noteDao = db.noteDao()
 
     private fun getRootDirectory(): DocumentFile? {
         val uri = prefs.storageUri ?: return null
@@ -442,29 +446,24 @@ class NoteRepository(private val context: Context) {
     suspend fun getCategoryRecords(category: Category): List<CategoryRecord> =
         withContext(Dispatchers.IO) {
             val dir = getOrCreateDirectory(category) ?: return@withContext emptyList()
-            // Ensure we have the latest index
-            val index = syncCategoryIndex(category)
-            
-            // We need NoteFile objects. 
-            // Since we don't want to query all files again if possible, but we need DocumentFile for operations.
-            // We can query files once or rely on the index keys to find files.
-            // But DocumentFile.findFile is slow.
-            // Better to list files once to map them.
+            syncCategoryIndex(category)
+
+            val notes = noteDao.getNotesByCategory(category.id)
             val filesMap = dir.listFiles().associateBy { it.name }
 
-            index.records.mapNotNull { (filename, record) ->
-                val file = filesMap[filename] ?: return@mapNotNull null
-                val noteFile = NoteFile(filename, file)
-                val date = record.fields["date"]?.toString() ?: ""
-                
+            notes.mapNotNull { entity ->
+                val file = filesMap[entity.filename] ?: return@mapNotNull null
+                val noteFile = NoteFile(entity.filename, file)
+                val date = entity.frontmatter["date"]?.toString() ?: ""
+
                 CategoryRecord(
                     category = category,
                     file = noteFile,
                     date = date,
-                    fields = record.fields,
-                    body = record.bodySnippet ?: ""
+                    fields = entity.frontmatter,
+                    body = entity.bodySnippet
                 )
-            }.sortedByDescending { it.date }
+            }
         }
 
     suspend fun getFullRecordBody(record: CategoryRecord): String = withContext(Dispatchers.IO) {
@@ -601,86 +600,59 @@ class NoteRepository(private val context: Context) {
         return prefs.storageUri != null
     }
 
-    // Indexing System
-    data class IndexRecord(
-        val lastModified: Long,
-        val fields: Map<String, Any>,
-        val bodySnippet: String? = null
-    )
-
-    data class CategoryIndex(
-        val records: MutableMap<String, IndexRecord> = mutableMapOf()
-    )
-
-    private suspend fun getCategoryIndexFile(dir: DocumentFile): DocumentFile? {
-        return dir.findFile("_index.json") ?: dir.createFile("application/json", "_index.json")
-    }
-
-    private suspend fun readCategoryIndex(file: DocumentFile): CategoryIndex {
-        val content = readText(file) ?: return CategoryIndex()
-        return try {
-            yamlMapper.readValue(content, CategoryIndex::class.java)
-        } catch (e: Exception) {
-            CategoryIndex()
-        }
-    }
-
-    private suspend fun writeCategoryIndex(file: DocumentFile, index: CategoryIndex) {
-        val json = yamlMapper.writeValueAsString(index)
-        writeText(file, json)
-    }
-
-    suspend fun syncCategoryIndex(category: Category): CategoryIndex = withContext(Dispatchers.IO) {
-        val dir = getOrCreateDirectory(category) ?: return@withContext CategoryIndex()
-        val indexFile = getCategoryIndexFile(dir) ?: return@withContext CategoryIndex()
-        val index = readCategoryIndex(indexFile)
-
+    suspend fun syncCategoryIndex(category: Category) = withContext(Dispatchers.IO) {
+        val dir = getOrCreateDirectory(category) ?: return@withContext
         val files = dir.listFiles().filter { it.name?.endsWith(".md") == true }
-        var isChanged = false
 
-        // 1. Remove deleted files
-        val fileNames = files.mapNotNull { it.name }.toSet()
-        val toRemove = index.records.keys.filter { !fileNames.contains(it) }
-        if (toRemove.isNotEmpty()) {
-            toRemove.forEach { index.records.remove(it) }
-            isChanged = true
+        // 1. Remove deleted files from DB
+        val fileNames = files.mapNotNull { it.name }
+        if (fileNames.isEmpty()) {
+            noteDao.deleteAllByCategory(category.id)
+            return@withContext
+        } else {
+            noteDao.deleteMissingNotes(category.id, fileNames)
         }
 
         // 2. Update modified/new files
+        val dbMetadatas =
+            noteDao.getNoteMetadatas(category.id).associate { it.filename to it.lastModified }
+
+        val toUpdate = mutableListOf<NoteEntity>()
+
         files.forEach { file ->
             val name = file.name ?: return@forEach
             val lastMod = file.lastModified()
-            val existing = index.records[name]
+            val dbLastMod = dbMetadatas[name]
 
-            if (existing == null || existing.lastModified < lastMod) {
+            if (dbLastMod == null || lastMod > dbLastMod || lastMod == 0L) {
                 val content = readText(file) ?: ""
                 val frontmatter = parseFrontmatter(content) ?: emptyMap()
                 val body = content.replace(Regex("^---\\n[\\s\\S]*?\\n---"), "").trim()
-                
-                index.records[name] = IndexRecord(
-                    lastModified = lastMod,
-                    fields = frontmatter,
-                    bodySnippet = body.take(200)
+
+                toUpdate.add(
+                    NoteEntity(
+                        category = category.id,
+                        filename = name,
+                        lastModified = lastMod,
+                        frontmatter = frontmatter,
+                        bodySnippet = body.take(200)
+                    )
                 )
-                isChanged = true
             }
         }
 
-        if (isChanged) {
-            writeCategoryIndex(indexFile, index)
+        if (toUpdate.isNotEmpty()) {
+            noteDao.upsertNotes(toUpdate)
         }
-
-        return@withContext index
     }
 
-    suspend fun getUniqueFieldValues(category: Category, key: String): List<String> = withContext(Dispatchers.IO) {
-        // Assume index is already synced when opening the screen, but we can sync here too to be safe, 
-        // or just read the file if we want speed. For now, let's sync to ensure accuracy.
-        val index = syncCategoryIndex(category)
-        index.records.values
-            .mapNotNull { it.fields[key]?.toString() }
-            .filter { it.isNotBlank() }
-            .distinct()
-            .sorted()
-    }
+    suspend fun getUniqueFieldValues(category: Category, key: String): List<String> =
+        withContext(Dispatchers.IO) {
+            syncCategoryIndex(category)
+            val notes = noteDao.getNotesByCategory(category.id)
+            notes.mapNotNull { it.frontmatter[key]?.toString() }
+                .filter { it.isNotBlank() }
+                .distinct()
+                .sorted()
+        }
 }
